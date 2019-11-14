@@ -23,7 +23,7 @@ from util import nearestPoint
 #################
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first = 'DummyAgent', second = 'DummyAgent'):
+               first = 'CTFAgent', second = 'CTFAgent'):
   """
   This function should return a list of two agents that will form the
   team, initialized using firstIndex and secondIndex as their agent
@@ -81,8 +81,45 @@ class CTFAgent(CaptureAgent):
           bestAction = action
           bestDist = dist
       return bestAction #chooses action that make you closest to your start state
-
+    opponents = self.getOpponents(gameState)
+    order = [self.index] + opponents
+    result = self.max_value(gameState,order,self.index, 5, -10000000, 10000000)
     return random.choice(bestActions)
+
+  def max_value(self, gameState, order, index, depth, alpha, beta):
+    # returns a value and an action so getAction can return the best action
+    if gameState.isWin() or gameState.isLose() or depth == 0:
+      return [self.evaluate(gameState,None), None]
+    v = -10000000
+    action = None
+    for a in gameState.getLegalActions(order[0]):
+      newState = gameState.generateSuccessor(order[0], a)
+      newScore = self.min_value(newState, order,index + 1, depth, alpha, beta)
+      if newScore > v:
+        v = newScore
+        action = a
+      if v > beta:
+        return [v, a]
+      alpha = max(alpha, v)
+    return [v, action]
+
+  def min_value(self, gameState, order,index, depth, alpha, beta):
+    numAgents = gameState.getNumAgents()
+    if gameState.isWin() or gameState.isLose() or depth == 0:
+      return self.evaluate(gameState,None)
+    v = 10000000
+    for a in gameState.getLegalActions(order[index]):
+      newState = gameState.generateSuccessor(order[index], a)
+      # if pacman goes next, here is where depth is decremented
+      if index + 1 > len(order):
+        v = min(v, self.max_value(newState, order,0, depth - 1, alpha, beta)[0])
+      # if another ghost goes
+      else:
+        v = min(v, self.min_value(newState, order,index + 1, depth, alpha, beta))
+      if v < alpha:
+        return v
+      beta = min(beta, v)
+    return v
 
   def getSuccessor(self, gameState, action):
     """
