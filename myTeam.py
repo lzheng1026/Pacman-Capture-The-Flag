@@ -183,6 +183,43 @@ class DefensiveReflexAgent(CTFAgent):
     return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2}
 
 
+class Inference(CTFAgent):
+  """
+  A class that is used to find where the ghosts are most likely to be
+  """
+  def __init__(self, gameState):
+    #find out which team you are in
+    if gameState.isOnRedTeam(self.index):
+        self.myTeam = gameState.getRedTeamIndices()
+        self.opponentTeam = gameState.getBlueTeamIndices()
+    else:
+        self.opponentTeam = gameState.getRedTeamIndices()
+        self.myTeam = gameState.getBlueTeamIndices()
+    self.beliefs = None
+
+  def observe(self, gameState):
+    """
+    Update beliefs about the distribution of where the opponent can be
+    """
+    myPosition = gameState.getAgentPosition(self.index)
+    if myPosition is None:
+      print("agent with the given index is not observable")
+
+    noisyDistances = []
+    allNoisyDistances = gameState.getAgentDistances()
+    for enemyIndex in self.opponentTeam:
+        noisyDistances.append(allNoisyDistances[enemyIndex])
+
+    allPossible = util.Counter()
+    for pos in self.getLegalPositions(self.index, gameState)
+        trueDistance = self.getMazeDistance(pos, myPosition)
+        """
+        I made a mistake somewhere here because I need to find
+         all possible legal positions not just of me but of 
+         the enemy
+        """
+
+
 class DummyAgent(CaptureAgent):
   """
   A Dummy agent to serve as an example of the necessary agent structure.
