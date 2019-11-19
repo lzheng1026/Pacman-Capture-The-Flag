@@ -40,6 +40,8 @@ def createTeam(firstIndex, secondIndex, isRed,
   """
 
   # The following line is an example only; feel free to change it.
+  first = "CTFAgent"
+  second = "CTFAgent"
   return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -88,8 +90,13 @@ class CTFAgent(CaptureAgent):
     """
     Finds the next successor which is a grid position (location tuple).
     """
+    debug = False
     successor = gameState.generateSuccessor(self.index, action)
     pos = successor.getAgentState(self.index).getPosition()
+    if debug:
+        print("pos " + str(pos))
+        print("nearestPoint " + str(nearestPoint(pos)) + "\n")
+        #The point of the if-else statement below is to make sure you are on a grid, because you could be between points
     if pos != nearestPoint(pos):
       # Only half a grid position was covered
       return successor.generateSuccessor(self.index, action)
