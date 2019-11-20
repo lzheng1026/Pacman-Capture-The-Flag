@@ -38,8 +38,8 @@ def createTeam(firstIndex, secondIndex, isRed,
   any extra arguments, so you should make sure that the default
   behavior is what you want for the nightly contest.
   """
-  first = "CTFAgent"
-  second = "CTFAgent"
+  first = "OffensiveReflexAgent"
+  second = "DefensiveReflexAgent"
   # The following line is an example only; feel free to change it.
   return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
@@ -56,6 +56,24 @@ class CTFAgent(CaptureAgent):
     self.start = gameState.getAgentPosition(self.index)
     CaptureAgent.registerInitialState(self, gameState)
 
+  def setEnemyPosition(self, gameState, pos, enemyIndex):
+      """
+      Sets the position of the ghost for this inference module to the
+      specified position in the supplied gameState.
+
+      Note that calling setGhostPosition does not change the position of the
+      ghost in the GameState object used for tracking the true progression of
+      the game.  The code in inference.py only ever receives a deep copy of
+      the GameState object which is responsible for maintaining game state,
+      not a reference to the original object.  Note also that the ghost
+      distance observations are stored at the time the GameState object is
+      created, so changing the position of the ghost will not affect the
+      functioning of observeState.
+      """
+      conf = game.Configuration(pos, game.Directions.STOP)
+      gameState.data.agentStates[enemyIndex] = game.AgentState(conf, False)
+      return gameState
+
   def chooseAction(self, gameState):
     """
     Picks among the actions with the highest Q(s,a).
@@ -66,6 +84,7 @@ class CTFAgent(CaptureAgent):
     start = time.time()
     values = [self.evaluate(gameState, a) for a in actions]
     print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+
 
     maxValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == maxValue]
@@ -82,15 +101,32 @@ class CTFAgent(CaptureAgent):
           bestAction = action
           bestDist = dist
       return bestAction #chooses action that make you closest to your start state
+
+    redTeam = gameState.getRedTeamIndices()
+    blueTeam = gameState.getBlueTeamIndices()
+    if self.index in redTeam:
+        redTeam.remove(self.index)
+        order = [self.index] + [blueTeam[0]] + redTeam + [blueTeam[1]]
+    else:
+        blueTeam.remove(self.index)
+        order = [self.index] + [redTeam[0]] + blueTeam + [redTeam[1]]
     print("DEBUGGING")
     opponents = self.getOpponents(gameState)
     print(opponents)
+    print("mini max test")
+    print(gameState.getAgentPosition(opponents[0]))
+    hypotheticalState = self.setEnemyPosition(gameState,(2,5),opponents[0])
+    hypotheticalState = self.setEnemyPosition(hypotheticalState, (12, 12), opponents[1])
+    print(hypotheticalState.getAgentPosition(opponents[0]))
     order = [self.index] + opponents
     print(order)
     print("TEST")
     print(gameState.getLegalActions(opponents[0]))
-    result = self.maxValue(gameState,order,0, 2, -10000000, 10000000)
-    return result
+
+    result = self.maxValue(hypotheticalState,order,0, 2, -10000000, 10000000)
+    print("Result")
+    print(result)
+    return result[1]
 
   def maxValue(self, gameState, order, index, depth, alpha, beta):
     # returns a value and an action so getAction can return the best action
@@ -100,7 +136,7 @@ class CTFAgent(CaptureAgent):
     action = None
     for a in gameState.getLegalActions(order[0]):
       newState = gameState.generateSuccessor(order[0], a)
-      newScore = self.minValue(newState, order,index + 1, depth, alpha, beta)
+      newScore = self.minValue(newState, order, index + 1, depth, alpha, beta)
       if newScore > v:
         v = newScore
         action = a
@@ -117,7 +153,7 @@ class CTFAgent(CaptureAgent):
     for a in gameState.getLegalActions(order[index]):
       newState = gameState.generateSuccessor(order[index], a)
       # if pacman goes next, here is where depth is decremented
-      if index + 1 > len(order):
+      if index + 1 >= len(order):
         v = min(v, self.maxValue(newState, order,0, depth - 1, alpha, beta)[0])
       # if another ghost goes
       else:
@@ -131,7 +167,10 @@ class CTFAgent(CaptureAgent):
     """
     Finds the next successor which is a grid position (location tuple).
     """
-    successor = gameState.generateSuccessor(self.index, action)
+    if action is None:
+        successor = gameState
+    else:
+        successor = gameState.generateSuccessor(self.index, action)
     pos = successor.getAgentState(self.index).getPosition()
     if pos != nearestPoint(pos):
       # Only half a grid position was covered
