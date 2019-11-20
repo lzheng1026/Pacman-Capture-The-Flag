@@ -268,6 +268,49 @@ class JointParticleFilterAgent(CTFAgent):
   def getJailPosition(self, i):  # need to pass in enemy index
     return self.initialGameState.getInitialAgentPosition(i)
 
+  def chooseAction(self, gameState):
+    """
+    Picks among the actions with the highest Q(s,a).
+    """
+    self.observeState(gameState)
+    print("***************")
+    print(str(self.getEnemyPositions()))
+    for k, v in self.getBeliefDistribution():
+        print(str(k) + ": " + str(v))
+    print("done")
+    dist = util.Counter()
+    for t, prob in self.getBeliefDistribution().items():
+        # print(str(self.index))
+        dist[t[self.index - 1]] += prob
+    for k, v in dist:
+        # print(str(k) + ": " + str(v))
+    #self.displayDistributionsOverPositions(dist)
+    #print("***************\n")
+    actions = gameState.getLegalActions(self.index)
+
+    # You can profile your evaluation time by uncommenting these lines
+    # start = time.time()
+    values = [self.evaluate(gameState, a) for a in actions]
+    # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+
+    maxValue = max(values)
+    bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+
+    foodLeft = len(self.getFood(gameState).asList())
+
+    if foodLeft <= 2:
+      bestDist = 9999
+      for action in actions:
+        successor = self.getSuccessor(gameState, action)
+        pos2 = successor.getAgentPosition(self.index)
+        dist = self.getMazeDistance(self.start, pos2)
+        if dist < bestDist:
+          bestAction = action
+          bestDist = dist
+      return bestAction #chooses action that make you closest to your start state
+
+    return random.choice(bestActions)
+
   def observeState(self, gameState):
     """
     Resamples the set of particles using the likelihood of the noisy
@@ -297,11 +340,11 @@ class JointParticleFilterAgent(CTFAgent):
     a list, edited, and then converted back to a tuple. This is a common
     operation when placing a ghost in jail.
     """
-    pacmanPosition = self.index
+    pacmanPosition = gameState.getAgentPosition(self.index)
     noisyDistances = gameState.getAgentDistances()  # gives noisy distances of ALL agents
     # emissionModels = [gameState.getDistanceProb(dist) for dist in noisyDistances]
 
-    for enemy_num in self.getOpponents(gameState):
+    for enemy_num in range(2):#self.getOpponents(gameState):
       beliefDist = self.getBeliefDistribution()
       W = util.Counter()
 
