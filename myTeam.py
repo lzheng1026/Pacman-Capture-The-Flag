@@ -17,6 +17,7 @@ import random, time, util
 from game import Directions
 import game
 from util import nearestPoint
+import itertools
 
 #################
 # Team creation #
@@ -196,10 +197,8 @@ class JointParticleFilterAgent(CTFAgent):
   positions.
   """
 
-  def __init__(self, numParticles=600):
+  def registerInitialState(self, gameState, numParticles=600):
     self.setNumParticles(numParticles)
-
-  def registerInitialState(self, gameState):
     CTFAgent.registerInitialState(self, gameState)
     self.initialize(gameState)
 
