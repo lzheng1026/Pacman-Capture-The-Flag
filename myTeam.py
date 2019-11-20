@@ -40,8 +40,8 @@ def createTeam(firstIndex, secondIndex, isRed,
   """
 
   # The following line is an example only; feel free to change it.
-  first = "CTFAgent"
-  second = "CTFAgent"
+  first = "JointParticleFilterAgent"
+  second = "JointParticleFilterAgent"
   return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -189,6 +189,154 @@ class DefensiveReflexAgent(CTFAgent):
   def getWeights(self, gameState, action):
     return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2}
 
+
+class JointParticleFilterAgent(CTFAgent):
+  """
+  JointParticleFilter tracks a joint distribution over tuples of all ghost
+  positions.
+  """
+
+  def __init__(self, numParticles=600):
+    self.setNumParticles(numParticles)
+
+  def registerInitialState(self, gameState):
+    CTFAgent.registerInitialState(self, gameState)
+    self.initialize(gameState)
+
+  def setNumParticles(self, numParticles):
+    self.numParticles = numParticles
+
+  def initialize(self, gameState, legalPositions=None):
+    "Stores information about the game, then initializes particles."
+    self.numEnemies = gameState.getNumAgents() - 2
+    self.enemies = []
+    self.legalPositions = gameState.getWalls().asList(False)
+    self.initializeParticles()
+
+    # for fail
+    self.initialGameState = gameState
+
+  def initializeParticles(self):
+    """
+    Initialize particles to be consistent with a uniform prior.
+
+    Each particle is a tuple of ghost positions. Use self.numParticles for
+    the number of particles. You may find the `itertools` package helpful.
+    Specifically, you will need to think about permutations of legal ghost
+    positions, with the additional understanding that ghosts may occupy the
+    same space. Look at the `itertools.product` function to get an
+    implementation of the Cartesian product.
+
+    Note: If you use itertools, keep in mind that permutations are not
+    returned in a random order; you must shuffle the list of permutations in
+    order to ensure even placement of particles across the board. Use
+    self.legalPositions to obtain a list of positions a ghost may occupy.
+
+    Note: the variable you store your particles in must be a list; a list is
+    simply a collection of unweighted variables (positions in this case).
+    Storing your particles as a Counter (where there could be an associated
+    weight with each position) is incorrect and may produce errors.
+    """
+    positions = self.legalPositions
+    enemy_positions = list(itertools.product(positions, positions))
+    num_positions = len(enemy_positions)
+    random.shuffle(enemy_positions)
+    self.enemy_positions = enemy_positions
+
+    atEach = self.numParticles / num_positions  # self.numParticles
+    remainder = self.numParticles % num_positions
+    # don't throw out a particle
+    particles = []
+    # populate particles
+    for pos in enemy_positions:
+      for num in range(atEach):
+        particles.append(pos)
+    # now populate the remainders
+    for index in range(remainder):
+      particles.append(enemy_positions[index])
+    # save to self.particles
+    random.shuffle(particles)
+    self.particles = particles
+    return particles
+
+  def addEnemyAgent(self, agent):
+    """
+    Each ghost agent is registered separately and stored (in case they are
+    different).
+    """
+    self.enemies.append(agent)
+
+  def getJailPosition(self, i):  # need to pass in enemy index
+    return self.initialGameState.getInitialAgentPosition(i)
+
+  def observeState(self, gameState):
+    """
+    Resamples the set of particles using the likelihood of the noisy
+    observations.
+
+    To loop over the ghosts, use:
+
+      for i in range(self.numGhosts):
+        ...
+
+    A correct implementation will handle two special cases:
+      1) When a ghost is captured by Pacman, all particles should be updated
+         so that the ghost appears in its prison cell, position
+         self.getJailPosition(i) where `i` is the index of the ghost.
+
+         As before, you can check if a ghost has been captured by Pacman by
+         checking if it has a noisyDistance of None.
+
+      2) When all particles receive 0 weight, they should be recreated from
+         the prior distribution by calling initializeParticles. After all
+         particles are generated randomly, any ghosts that are eaten (have
+         noisyDistance of None) must be changed to the jail Position. This
+         will involve changing each particle if a ghost has been eaten.
+
+    self.getParticleWithGhostInJail is a helper method to edit a specific
+    particle. Since we store particles as tuples, they must be converted to
+    a list, edited, and then converted back to a tuple. This is a common
+    operation when placing a ghost in jail.
+    """
+    pacmanPosition = self.index
+    noisyDistances = gameState.getAgentDistances()  # gives noisy distances of ALL agents
+    # emissionModels = [gameState.getDistanceProb(dist) for dist in noisyDistances]
+
+    for enemy_num in self.getOpponents(gameState):
+      beliefDist = self.getBeliefDistribution()
+      W = util.Counter()
+
+      # JAIL? unhandled so far
+
+      for p in self.particles:
+        trueDistance = self.getMazeDistance(p[enemy_num], pacmanPosition)
+        W[p] = (beliefDist[p] * gameState.getDistanceProb(trueDistance, noisyDistances[enemy_num]))
+
+      # we resample after we get weights for each ghost
+      if W.totalCount() == 0:
+        self.particles = self.initializeParticles()
+      else:
+        values = []
+        keys = []
+        for key, value in W.items():
+          keys.append(key)
+          values.append(value)
+        self.particles = util.nSample(values, keys, self.numParticles)
+
+  def getBeliefDistribution(self):
+    "*** YOUR CODE HERE ***"
+    allPossible = util.Counter()
+    for pos in self.particles:
+      allPossible[pos] += 1
+    allPossible.normalize()
+    return allPossible
+
+  def getEnemyPositions(self):
+    """
+    Uses getBeliefDistribution to predict where the two enemies are most likely to be
+    :return: two tuples of enemy positions
+    """
+    return self.getBeliefDistribution().argMax()
 
 class DummyAgent(CaptureAgent):
   """
