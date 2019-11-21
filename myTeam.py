@@ -122,7 +122,6 @@ class CTFAgent(CaptureAgent):
     print(order)
     print("TEST")
     print(gameState.getLegalActions(opponents[0]))
-
     result = self.maxValue(hypotheticalState,order,0, 2, -10000000, 10000000)
     print("Result")
     print(result)
