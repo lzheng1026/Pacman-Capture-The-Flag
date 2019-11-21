@@ -122,6 +122,12 @@ class CTFAgent(CaptureAgent):
         """
         features = self.getFeatures(gameState, action)
         weights = self.getWeights(gameState, action)
+
+        print("FEATURES")
+        for k, v in features.items():
+            print(str(k) + ": value: " + str(v) + ", weight: " + str(weights[k]))
+        print("\n")
+
         return features * weights
 
     def getFeatures(self, gameState, action):
@@ -434,7 +440,10 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         else:
             # value distance to starting point  A LOT
             distToStart = self.getMazeDistance(self.start, myPos)
-            features['distanceToStart'] = 1/distToStart #100 weight
+            if distToStart != 0:
+                features['distanceToStart'] = 1/distToStart #100 weight
+            else:
+                features['distanceToStart'] = 0
 
         # capsules
         capsuleList = self.getCapsules(gameState)
@@ -475,6 +484,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_one_pos))
             if enemy_two_pos is not None:
                 min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_two_pos))
+
+
+
             if enemy_one_pos is None and enemy_two_pos is None:
                 beliefs = [self.getBeliefDistribution(enemy_index) for enemy_index in self.getOpponents(gameState)]
                 enemy_one_prob = beliefs[0][beliefs[0].argMax()]
@@ -487,6 +499,8 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                     features['generalEnemyDist'] = 1/general_enemy_dist
                 else:
                     features['generalEnemyDist'] = 0
+
+                print(str(general_enemy_dist))
 
             if self.scaredMovesLeft > 5:
                 # either eat the enemy if you are close or don't care
