@@ -94,7 +94,10 @@ class CTFAgent(CaptureAgent):
         Finds the next successor which is a grid position (location tuple).
         """
         debug = False
-        successor = gameState.generateSuccessor(self.index, action)
+        if action is None:
+            successor = gameState
+        else:
+            successor = gameState.generateSuccessor(self.index, action)
         pos = successor.getAgentState(self.index).getPosition()
         if debug:
             print("pos " + str(pos))
@@ -157,6 +160,23 @@ class ParticlesCTFAgent(CTFAgent):
         # for fail
         self.initialGameState = gameState
 
+    def setEnemyPosition(self, gameState, pos, enemyIndex):
+        """
+        Sets the position of the ghost for this inference module to the
+        specified position in the supplied gameState.
+        Note that calling setGhostPosition does not change the position of the
+        ghost in the GameState object used for tracking the true progression of
+        the game.  The code in inference.py only ever receives a deep copy of
+        the GameState object which is responsible for maintaining game state,
+        not a reference to the original object.  Note also that the ghost
+        distance observations are stored at the time the GameState object is
+        created, so changing the position of the ghost will not affect the
+        functioning of observeState.
+        """
+        conf = game.Configuration(pos, game.Directions.STOP)
+        gameState.data.agentStates[enemyIndex] = game.AgentState(conf, False)
+        return gameState
+
     def initializeParticles(self, type="both"):
         """
         Initialize particles to be consistent with a uniform prior.
@@ -206,9 +226,6 @@ class ParticlesCTFAgent(CTFAgent):
         different).
         """
         self.enemies.append(agent)
-
-    def getJailPosition(self, i):  # need to pass in enemy index
-        return self.initialGameState.getInitialAgentPosition(i)
 
     def observeState(self, gameState, enemyIndex):
         """
@@ -278,7 +295,6 @@ class ParticlesCTFAgent(CTFAgent):
                 self.particlesB = util.nSample(values, keys, self.numParticles)
 
     def getBeliefDistribution(self, enemyIndex):
-        "*** YOUR CODE HERE ***"
         allPossible = util.Counter()
         if enemyIndex == self.a:
             for pos in self.particlesA:
@@ -301,20 +317,13 @@ class ParticlesCTFAgent(CTFAgent):
         Picks among the actions with the highest Q(s,a).
         """
         # ============================================
+        start = time.time()
         self.observeState(gameState, self.a)
         self.observeState(gameState, self.b)
         beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
         self.displayDistributionsOverPositions(beliefs)
         # ============================================
         actions = gameState.getLegalActions(self.index)
-
-        # You can profile your evaluation time by uncommenting these lines
-        start = time.time()
-        values = [self.evaluate(gameState, a) for a in actions]
-        print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
-
-        maxValue = max(values)
-        bestActions = [a for a, v in zip(actions, values) if v == maxValue]
 
         foodLeft = len(self.getFood(gameState).asList())
 
@@ -329,7 +338,66 @@ class ParticlesCTFAgent(CTFAgent):
                     bestDist = dist
             return bestAction  # chooses action that make you closest to your start state
 
-        return random.choice(bestActions)
+        aPosition = self.getEnemyPositions(self.a)
+        hypotheticalState = self.setEnemyPosition(gameState, aPosition, self.a)
+
+        bPosition = self.getEnemyPositions(self.b)
+        hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
+
+        partner = self.partnerIndex(gameState)
+
+        order = [self.index, self.a,self.b]
+
+        result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
+        print("Result")
+        print(result)
+        print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+        return result[1]
+
+    def maxValue(self, gameState, order, index, depth, alpha, beta):
+        # returns a value and an action so getAction can return the best action
+        if gameState.isOver() or depth == 0:
+            return [self.evaluate(gameState, None), None]
+        v = -10000000
+        action = None
+        for a in gameState.getLegalActions(order[0]):
+            newState = gameState.generateSuccessor(order[0], a)
+            newScore = self.minValue(newState, order, index + 1, depth, alpha, beta)
+            if newScore > v:
+                v = newScore
+                action = a
+            if v > beta:
+                return [v, a]
+            alpha = max(alpha, v)
+        return [v, action]
+
+    def minValue(self, gameState, order, index, depth, alpha, beta):
+        if gameState.isOver() or depth == 0:
+            return self.evaluate(gameState, None)
+        v = 10000000
+        for a in gameState.getLegalActions(order[index]):
+            newState = gameState.generateSuccessor(order[index], a)
+            # if pacman goes next, here is where depth is decremented
+            if index + 1 >= len(order):
+                v = min(v, self.maxValue(newState, order, 0, depth - 1, alpha, beta)[0])
+            # if another enemy goes
+            else:
+                #change to max and [0] if using partner
+                v = min(v, self.minValue(newState, order, index + 1, depth, alpha, beta))
+            if v < alpha:
+                return v
+            beta = min(beta, v)
+        return v
+
+    def partnerIndex(self, gameState):
+        redTeam = gameState.getRedTeamIndices()
+        blueTeam = gameState.getBlueTeamIndices()
+        if self.index in redTeam:
+            redTeam.remove(self.index)
+            return redTeam[0]
+        else:
+            blueTeam.remove(self.index)
+            return blueTeam[0]
 
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
