@@ -340,21 +340,68 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
     """
 
     def getFeatures(self, gameState, action):
+
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
-        foodList = self.getFood(successor).asList()
-        features['successorScore'] = -len(foodList)  # self.getScore(successor)
+        myPos = successor.getAgentState(self.index).getPosition()
+        # ============================================FOOD=======================================
+        if gameState.isOnRedTeam(self.index):
+            foodList = gameState.getBlueFood().asList()#self.getFood(successor).asList()
+        else:
+            foodList = gameState.getRedFood().asList()
+        features['successorScore'] = -len(foodList)  # the more the food, the worse
 
-        # Compute distance to the nearest food
-
+        # Compute distances to the nearest food
         if len(foodList) > 0:  # This should always be True,  but better safe than sorry
-            myPos = successor.getAgentState(self.index).getPosition()
-            minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
-            features['distanceToFood'] = minDistance
+            all_food_dist = [self.getMazeDistance(myPos, food) for food in foodList]
+            #nearest
+            minDistance = min(all_food_dist)
+            features["closest-food"] = minDistance
+            #top nearest
+            all_food_dist.sort()
+            top_three_food = all_food_dist[0:3]
+            features["closest-three-foods"] = sum([top_three_food[i] for i in range(3)])
+
+        # Total distance to food
+        totalDist = 0
+        for food in foodList:
+            dist = self.getMazeDistance(food, myPos)
+            if dist!=0:
+                totalDist += dist
+        # features["total-food-dist"] = totalDist
+
+        # ============================================GHOSTS============================================
+        # offensive, we are actually scared of enemies
+        enemyIndices = self.getOpponents(gameState)
+        a = enemyIndices[0]
+        b = enemyIndices[1]
+
+        # expected enemy distance; negative
+        a_distribution = self.getBeliefDistribution(a)
+        a_dist = 0
+        for loc, prob in a_distribution.items():
+            a_dist += prob*self.getMazeDistance(loc, myPos)
+        if a_dist > 10:
+            features["enemy_a"] = 0
+        else:
+            features["enemy_a"] = a_dist
+
+        b_distribution = self.getBeliefDistribution(b)
+        b_dist = 0
+        for loc, prob in b_distribution.items():
+            b_dist += prob * self.getMazeDistance(loc, myPos)
+        if b_dist > 10:
+            features["enemy_b"] = 0
+        else:
+            features["enemy_b"] = b_dist
+        # the further away the better
+
         return features
 
-    def getWeights(self, gameState, action):
-        return {'successorScore': 100, 'distanceToFood': -1}
+    def getWeights(self, gameState, action): #closer the food the better
+        return {'successorScore': 100, "closest-food": -2,
+                "closest-three-foods": -1,
+                "enemy_a": 1, "enemy_b": 1}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
@@ -366,6 +413,7 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
     """
 
     def getFeatures(self, gameState, action):
+
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
 
@@ -388,10 +436,43 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
 
+        #=======================================
+
+        # Compute expected distance to invaders using noisy distances
+        # offensive, we are actually scared of enemies
+        enemyIndices = self.getOpponents(gameState)
+        a = enemyIndices[0]
+        b = enemyIndices[1]
+
+        #expected dist
+        a_distribution = self.getBeliefDistribution(a)
+        a_dist = 0
+        for loc, prob in a_distribution.items():
+            a_dist += prob * self.getMazeDistance(loc, myPos)
+        if a_dist < 20:
+            features["enemy_a"] = 0
+        else:
+            features["enemy_a"] = a_dist
+
+        b_distribution = self.getBeliefDistribution(b)
+        b_dist = 0
+        for loc, prob in b_distribution.items():
+            b_dist += prob * self.getMazeDistance(loc, myPos)
+        if b_dist < 20:
+            features["enemy_b"] = 0
+        else:
+            features["enemy_b"] = a_dist
+
+        if features["enemy_b"]<features["enemy_a"]:
+            temp=features["enemy_a"]
+            features["enemy_a"] = features["enemy_b"]
+            features["enemy_b"] = temp
+
         return features
 
     def getWeights(self, gameState, action):
-        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2}
+        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2,
+                "enemy_a": -100, "enemy_b": -10}
 
 
 class ParticlesCTFAgent(CTFAgent):
