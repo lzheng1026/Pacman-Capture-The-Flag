@@ -43,7 +43,7 @@ def createTeam(firstIndex, secondIndex, isRed,
 
     # The following line is an example only; feel free to change it.
     first = "OffensiveReflexAgent"
-    second = "DefensiveReflexAgent"
+    second = "OffensiveReflexAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 
@@ -64,6 +64,13 @@ class CTFAgent(CaptureAgent):
         """
         Picks among the actions with the highest Q(s,a).
         """
+        # ============================================
+        start = time.time()
+        self.observeState(gameState, self.a)
+        self.observeState(gameState, self.b)
+        beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
+        self.displayDistributionsOverPositions(beliefs)
+        # ============================================
         actions = gameState.getLegalActions(self.index)
 
         # You can profile your evaluation time by uncommenting these lines
@@ -159,6 +166,9 @@ class ParticlesCTFAgent(CTFAgent):
         self.a, self.b = self.getOpponents(gameState)
         # for fail
         self.initialGameState = gameState
+        # for features
+        self.scaredMovesLeft = 0
+        self.capsulesCount = len(self.getCapsules(gameState))
 
     def setEnemyPosition(self, gameState, pos, enemyIndex):
         """
@@ -416,21 +426,108 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
     """
 
     def getFeatures(self, gameState, action):
+
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
+        myPos = successor.getAgentState(self.index).getPosition()
+
+        # food
         foodList = self.getFood(successor).asList()
-        features['successorScore'] = -len(foodList)  # self.getScore(successor)
+        if len(foodList) > 2: #only care about food if there are food still to eat
+            features['successorScore'] = -len(foodList)  # self.getScore(successor)
+            # Compute distance to the nearest food
+            if len(foodList) > 0:  # This should always be True,  but better safe than sorry
+                minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+                features['distanceToFood'] = minDistance
+        else:
+            # value distance to starting point  A LOT
+            distToStart = self.getMazeDistance(self.start, myPos)
+            features['distanceToStart'] = 1/distToStart #100 weight
 
-        # Compute distance to the nearest food
+        # capsules
+        capsuleList = self.getCapsules(gameState)
+        if len(capsuleList) > 0:
+            minCapDistance = min([self.getMazeDistance(myPos, capsule) for capsule in capsuleList])
+            if minCapDistance<5:
+                features['distanceToCapsule'] = minCapDistance
+            else:
+                features['distanceToCapsule'] = 0
+        if len(capsuleList) != self.capsulesCount:
+            self.scaredMovesLeft = 38
+            self.capsulesCount = len(capsuleList)
 
-        if len(foodList) > 0:  # This should always be True,  but better safe than sorry
-            myPos = successor.getAgentState(self.index).getPosition()
-            minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
-            features['distanceToFood'] = minDistance
+        # enemies
+
+        # do I care about the enemy?
+        care = False
+        halfway = gameState.data.layout.width/2
+        if self.red:
+            if myPos[0] > halfway:
+                # I am on the enemy's side
+                care = True
+        else: # I am on the blue team
+            if myPos[0] < halfway:
+                # now i am on red team's side
+                care = True
+        print("care? " + str(care) + "\n")
+
+        if care:
+
+            enemies = [successor.getAgentPosition(i) for i in self.getOpponents(successor)]
+            print(str(enemies[0]))
+            print(str(enemies[1]))
+            enemy_one_pos = enemies[0]
+            enemy_two_pos = enemies[1]
+            min_enemy_dist = 99999999999
+            if enemy_one_pos is not None:
+                min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_one_pos))
+            if enemy_two_pos is not None:
+                min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_two_pos))
+            if enemy_one_pos is None and enemy_two_pos is None:
+                beliefs = [self.getBeliefDistribution(enemy_index) for enemy_index in self.getOpponents(gameState)]
+                enemy_one_prob = beliefs[0][beliefs[0].argMax()]
+                enemy_two_prob = beliefs[1][beliefs[1].argMax()]
+                if enemy_one_prob > enemy_two_prob:
+                    general_enemy_dist = self.getMazeDistance(myPos, beliefs[0].argMax())
+                else:
+                    general_enemy_dist = self.getMazeDistance(myPos, beliefs[1].argMax())
+                if general_enemy_dist < 10:
+                    features['generalEnemyDist'] = 1/general_enemy_dist
+                else:
+                    features['generalEnemyDist'] = 0
+
+            if self.scaredMovesLeft > 5:
+                # either eat the enemy if you are close or don't care
+                if min_enemy_dist != 99999999999:
+                    features['eatEnemyDist'] = min_enemy_dist
+                else:
+                    features['eatEnemyDist'] = 0
+            else:
+                print("here all the time")
+                # be scared if they are very close; within 5
+                if min_enemy_dist != 99999999999:
+                    features['minEnemyDist'] = 1/min_enemy_dist
+                else:
+                    features['minEnemyDist'] = 0
+
+            # care about it a little if it is close enough?
+
+        # scared moves
+        if self.scaredMovesLeft > 0:
+            self.scaredMovesLeft -= 1
+
         return features
 
     def getWeights(self, gameState, action):
-        return {'successorScore': 100, 'distanceToFood': -1}
+        successor = self.getSuccessor(gameState, action)
+        foodList = self.getFood(successor).asList()
+        if len(foodList) <= 2:
+            return {'distanceToStart': 100, 'distanceToCapsule': 0,
+                    'minEnemyDist': -10000, 'eatEnemyDist': 0,
+                    'generalEnemyDist': -1000}
+        else:
+            return {'successorScore': 100, 'distanceToFood': -1, 'minEnemyDist': -10000, 'eatEnemyDist': -1,
+                    'distanceToCapsule': -2, 'generalEnemyDist': -1000}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
@@ -442,6 +539,7 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
     """
 
     def getFeatures(self, gameState, action):
+
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
 
@@ -464,10 +562,43 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
 
+        #=======================================
+
+        # Compute expected distance to invaders using noisy distances
+        # offensive, we are actually scared of enemies
+        enemyIndices = self.getOpponents(gameState)
+        a = enemyIndices[0]
+        b = enemyIndices[1]
+
+        #expected dist
+        a_distribution = self.getBeliefDistribution(a)
+        a_dist = 0
+        for loc, prob in a_distribution.items():
+            a_dist += prob * self.getMazeDistance(loc, myPos)
+        if a_dist < 20:
+            features["enemy_a"] = 0
+        else:
+            features["enemy_a"] = a_dist
+
+        b_distribution = self.getBeliefDistribution(b)
+        b_dist = 0
+        for loc, prob in b_distribution.items():
+            b_dist += prob * self.getMazeDistance(loc, myPos)
+        if b_dist < 20:
+            features["enemy_b"] = 0
+        else:
+            features["enemy_b"] = a_dist
+
+        if features["enemy_b"]<features["enemy_a"]:
+            temp=features["enemy_a"]
+            features["enemy_a"] = features["enemy_b"]
+            features["enemy_b"] = temp
+
         return features
 
     def getWeights(self, gameState, action):
-        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2}
+        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2,
+                "enemy_a": -100, "enemy_b": -10}
 
 
 class ParticlesCTFAgent(CTFAgent):
