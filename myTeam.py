@@ -322,47 +322,55 @@ class ParticlesCTFAgent(CTFAgent):
         """
         return self.getBeliefDistribution(enemyIndex).argMax()
 
-    # def chooseAction(self, gameState):
-    #     """
-    #     Picks among the actions with the highest Q(s,a).
-    #     """
-    #     # ============================================
-    #     start = time.time()
-    #     self.observeState(gameState, self.a)
-    #     self.observeState(gameState, self.b)
-    #     beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
-    #     self.displayDistributionsOverPositions(beliefs)
-    #     # ============================================
-    #     actions = gameState.getLegalActions(self.index)
-    #
-    #     foodLeft = len(self.getFood(gameState).asList())
-    #
-    #     if foodLeft <= 2:
-    #         bestDist = 9999
-    #         for action in actions:
-    #             successor = self.getSuccessor(gameState, action)
-    #             pos2 = successor.getAgentPosition(self.index)
-    #             dist = self.getMazeDistance(self.start, pos2)
-    #             if dist < bestDist:
-    #                 bestAction = action
-    #                 bestDist = dist
-    #         return bestAction  # chooses action that make you closest to your start state
-    #
-    #     aPosition = self.getEnemyPositions(self.a)
-    #     hypotheticalState = self.setEnemyPosition(gameState, aPosition, self.a)
-    #
-    #     bPosition = self.getEnemyPositions(self.b)
-    #     hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
-    #
-    #     partner = self.partnerIndex(gameState)
-    #
-    #     order = [self.index, self.a,self.b]
-    #
-    #     result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
-    #     print("Result")
-    #     print(result)
-    #     print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
-    #     return result[1]
+    def chooseAction(self, gameState):
+        """
+        Picks among the actions with the highest Q(s,a).
+        """
+        # ============================================
+        start = time.time()
+        pacmanPosition = gameState.getAgentPosition(self.index)
+        self.observeState(gameState, self.a)
+        self.observeState(gameState, self.b)
+        beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
+        self.displayDistributionsOverPositions(beliefs)
+        # ============================================
+        actions = gameState.getLegalActions(self.index)
+
+        foodLeft = len(self.getFood(gameState).asList())
+
+        if foodLeft <= 2:
+            bestDist = 9999
+            for action in actions:
+                successor = self.getSuccessor(gameState, action)
+                pos2 = successor.getAgentPosition(self.index)
+                dist = self.getMazeDistance(self.start, pos2)
+                if dist < bestDist:
+                    bestAction = action
+                    bestDist = dist
+            return bestAction  # chooses action that make you closest to your start state
+
+        aPosition = self.getEnemyPositions(self.a)
+        hypotheticalState = self.setEnemyPosition(gameState, aPosition, self.a)
+
+        bPosition = self.getEnemyPositions(self.b)
+        hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
+
+        partner = self.partnerIndex(gameState)
+
+        order = [self.index, self.a,self.b]
+
+        if self.getMazeDistance(aPosition,pacmanPosition) < 15 or self.getMazeDistance(bPosition,pacmanPosition) < 15:
+            result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
+            print("Result")
+            print(result)
+            print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+            return result[1]
+        else:
+            values = [self.evaluate(gameState, a) for a in actions]
+            maxValue = max(values)
+            bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+            print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+            return random.choice(bestActions)
 
     def maxValue(self, gameState, order, index, depth, alpha, beta):
         # returns a value and an action so getAction can return the best action
