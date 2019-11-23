@@ -76,7 +76,7 @@ class CTFAgent(CaptureAgent):
         # You can profile your evaluation time by uncommenting these lines
         start = time.time()
         values = [self.evaluate(gameState, a) for a in actions]
-        print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+        #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
 
         maxValue = max(values)
         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
@@ -362,23 +362,23 @@ class ParticlesCTFAgent(CTFAgent):
         if self.getMazeDistance(aPosition,pacmanPosition) < 10:
             order = [self.index, self.a]
             result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
-            print("Result")
-            print(result)
-            print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+            #print("Result")
+            #print(result)
+            #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
             return result[1]
         elif self.getMazeDistance(bPosition,pacmanPosition) < 10:
             order = [self.index, self.b]
             result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
-            print("Result")
-            print(result)
-            print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+            #print("Result")
+            #print(result)
+            #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
             return result[1]
 
         else:
             values = [self.evaluate(gameState, a) for a in actions]
             maxValue = max(values)
             bestActions = [a for a, v in zip(actions, values) if v == maxValue]
-            print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+            #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
             return random.choice(bestActions)
 
     def maxValue(self, gameState, order, index, depth, alpha, beta):
