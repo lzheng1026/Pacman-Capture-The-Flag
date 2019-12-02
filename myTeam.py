@@ -26,129 +26,24 @@ import itertools
 
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
-    """
-    This function should return a list of two agents that will form the
-    team, initialized using firstIndex and secondIndex as their agent
-    index numbers.  isRed is True if the red team is being created, and
-    will be False if the blue team is being created.
-
-    As a potentially helpful development aid, this function can take
-    additional string-valued keyword arguments ("first" and "second" are
-    such arguments in the case of this function), which will come from
-    the --redOpts and --blueOpts command-line arguments to capture.py.
-    For the nightly contest, however, your team will be created without
-    any extra arguments, so you should make sure that the default
-    behavior is what you want for the nightly contest.
-    """
-
-    # The following line is an example only; feel free to change it.
     first = "OffensiveReflexAgent"
     second = "DefensiveReflexAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
-
 
 ##########
 # Agents #
 ##########
 
-class CTFAgent(CaptureAgent):
-    """
-    A test class for agents
-    """
 
-    def registerInitialState(self, gameState):
-        self.start = gameState.getAgentPosition(self.index)
-        CaptureAgent.registerInitialState(self, gameState)
-
-    def chooseAction(self, gameState):
-        """
-        Picks among the actions with the highest Q(s,a).
-        """
-        # ============================================
-        start = time.time()
-        self.observeState(gameState, self.a)
-        self.observeState(gameState, self.b)
-        beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
-        self.displayDistributionsOverPositions(beliefs)
-        # ============================================
-        actions = gameState.getLegalActions(self.index)
-
-        # You can profile your evaluation time by uncommenting these lines
-        start = time.time()
-        values = [self.evaluate(gameState, a) for a in actions]
-        #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
-
-        maxValue = max(values)
-        bestActions = [a for a, v in zip(actions, values) if v == maxValue]
-
-        foodLeft = len(self.getFood(gameState).asList())
-
-        if foodLeft <= 2:
-            bestDist = 9999
-            for action in actions:
-                successor = self.getSuccessor(gameState, action)
-                pos2 = successor.getAgentPosition(self.index)
-                dist = self.getMazeDistance(self.start, pos2)
-                if dist < bestDist:
-                    bestAction = action
-                    bestDist = dist
-            return bestAction  # chooses action that make you closest to your start state
-
-        return random.choice(bestActions)
-
-    def getSuccessor(self, gameState, action):
-        """
-        Finds the next successor which is a grid position (location tuple).
-        """
-        debug = False
-        if action is None:
-            successor = gameState
-        else:
-            successor = gameState.generateSuccessor(self.index, action)
-        pos = successor.getAgentState(self.index).getPosition()
-        if debug:
-            print("pos " + str(pos))
-            print("nearestPoint " + str(nearestPoint(pos)) + "\n")
-            # The point of the if-else statement below is to make sure you are on a grid, because you could be between points
-        if pos != nearestPoint(pos):
-            # Only half a grid position was covered
-            return successor.generateSuccessor(self.index, action)
-        else:
-            return successor
-
-    def evaluate(self, gameState, action):
-        """
-        Computes a linear combination of features and feature weights
-        """
-        features = self.getFeatures(gameState, action)
-        weights = self.getWeights(gameState, action)
-        return features * weights
-
-    def getFeatures(self, gameState, action):
-        """
-        Returns a counter of features for the state
-        """
-        features = util.Counter()
-        successor = self.getSuccessor(gameState, action)
-        features['successorScore'] = self.getScore(successor)
-        return features
-
-    def getWeights(self, gameState, action):
-        """
-        Normally, weights do not depend on the gamestate.  They can be either
-        a counter or a dictionary.
-        """
-        return {'successorScore': 1.0}
-
-
-class ParticlesCTFAgent(CTFAgent):
+class ParticlesCTFAgent(CaptureAgent):
     """
     CTF Agent that models enemies using particle filtering.
     """
 
     def registerInitialState(self, gameState, numParticles=600):
         # =====original register initial state=======
-        CTFAgent.registerInitialState(self, gameState)
+        self.start = gameState.getAgentPosition(self.index)
+        CaptureAgent.registerInitialState(self, gameState)
         # =====ParticleCTFAgent init================
         self.setNumParticles(numParticles)
         self.initialize(gameState)
@@ -157,7 +52,6 @@ class ParticlesCTFAgent(CTFAgent):
         self.numParticles = numParticles
 
     def initialize(self, gameState, legalPositions=None):
-        "Stores information about the game, then initializes particles."
 
         self.numEnemies = gameState.getNumAgents() - 2
         self.enemies = []
@@ -171,43 +65,13 @@ class ParticlesCTFAgent(CTFAgent):
         self.capsulesCount = len(self.getCapsules(gameState))
 
     def setEnemyPosition(self, gameState, pos, enemyIndex):
-        """
-        Sets the position of the ghost for this inference module to the
-        specified position in the supplied gameState.
-        Note that calling setGhostPosition does not change the position of the
-        ghost in the GameState object used for tracking the true progression of
-        the game.  The code in inference.py only ever receives a deep copy of
-        the GameState object which is responsible for maintaining game state,
-        not a reference to the original object.  Note also that the ghost
-        distance observations are stored at the time the GameState object is
-        created, so changing the position of the ghost will not affect the
-        functioning of observeState.
-        """
+
         conf = game.Configuration(pos, game.Directions.STOP)
         gameState.data.agentStates[enemyIndex] = game.AgentState(conf, False)
         return gameState
 
     def initializeParticles(self, type="both"):
-        """
-        Initialize particles to be consistent with a uniform prior.
 
-        Each particle is a tuple of ghost positions. Use self.numParticles for
-        the number of particles. You may find the `itertools` package helpful.
-        Specifically, you will need to think about permutations of legal ghost
-        positions, with the additional understanding that ghosts may occupy the
-        same space. Look at the `itertools.product` function to get an
-        implementation of the Cartesian product.
-
-        Note: If you use itertools, keep in mind that permutations are not
-        returned in a random order; you must shuffle the list of permutations in
-        order to ensure even placement of particles across the board. Use
-        self.legalPositions to obtain a list of positions a ghost may occupy.
-
-        Note: the variable you store your particles in must be a list; a list is
-        simply a collection of unweighted variables (positions in this case).
-        Storing your particles as a Counter (where there could be an associated
-        weight with each position) is incorrect and may produce errors.
-        """
         positions = self.legalPositions
         atEach = self.numParticles / len(positions)  # self.numParticles
         remainder = self.numParticles % len(positions)
@@ -230,42 +94,8 @@ class ParticlesCTFAgent(CTFAgent):
             self.particlesB = particles
         return particles
 
-    def addEnemyAgent(self, agent):
-        """
-        Each ghost agent is registered separately and stored (in case they are
-        different).
-        """
-        self.enemies.append(agent)
-
     def observeState(self, gameState, enemyIndex):
-        """
-        Resamples the set of particles using the likelihood of the noisy
-        observations.
 
-        To loop over the ghosts, use:
-
-          for i in range(self.numGhosts):
-            ...
-
-        A correct implementation will handle two special cases:
-          1) When a ghost is captured by Pacman, all particles should be updated
-             so that the ghost appears in its prison cell, position
-             self.getJailPosition(i) where `i` is the index of the ghost.
-
-             As before, you can check if a ghost has been captured by Pacman by
-             checking if it has a noisyDistance of None.
-
-          2) When all particles receive 0 weight, they should be recreated from
-             the prior distribution by calling initializeParticles. After all
-             particles are generated randomly, any ghosts that are eaten (have
-             noisyDistance of None) must be changed to the jail Position. This
-             will involve changing each particle if a ghost has been eaten.
-
-        self.getParticleWithGhostInJail is a helper method to edit a specific
-        particle. Since we store particles as tuples, they must be converted to
-        a list, edited, and then converted back to a tuple. This is a common
-        operation when placing a ghost in jail.
-        """
         pacmanPosition = gameState.getAgentPosition(self.index)
 
         if enemyIndex == self.a:
@@ -321,6 +151,50 @@ class ParticlesCTFAgent(CTFAgent):
         :return: two tuples of enemy positions
         """
         return self.getBeliefDistribution(enemyIndex).argMax()
+
+    def getSuccessor(self, gameState, action):
+        """
+        Finds the next successor which is a grid position (location tuple).
+        """
+        debug = False
+        if action is None:
+            successor = gameState
+        else:
+            successor = gameState.generateSuccessor(self.index, action)
+        pos = successor.getAgentState(self.index).getPosition()
+        if debug:
+            print("pos " + str(pos))
+            print("nearestPoint " + str(nearestPoint(pos)) + "\n")
+            # The point of the if-else statement below is to make sure you are on a grid, because you could be between points
+        if pos != nearestPoint(pos):
+            # Only half a grid position was covered
+            return successor.generateSuccessor(self.index, action)
+        else:
+            return successor
+
+    def evaluate(self, gameState, action):
+        """
+        Computes a linear combination of features and feature weights
+        """
+        features = self.getFeatures(gameState, action)
+        weights = self.getWeights(gameState, action)
+        return features * weights
+
+    def getFeatures(self, gameState, action):
+        """
+        Returns a counter of features for the state
+        """
+        features = util.Counter()
+        successor = self.getSuccessor(gameState, action)
+        features['successorScore'] = self.getScore(successor)
+        return features
+
+    def getWeights(self, gameState, action):
+        """
+        Normally, weights do not depend on the gamestate.  They can be either
+        a counter or a dictionary.
+        """
+        return {'successorScore': 1.0}
 
     def chooseAction(self, gameState):
         """
@@ -428,11 +302,6 @@ class ParticlesCTFAgent(CTFAgent):
 
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
-    """
-    A reflex agent that seeks food. This is an agent
-    we give you to get an idea of what an offensive agent might look like,
-    but it is by no means the best or only way to build an offensive agent.
-    """
 
     def getFeatures(self, gameState, action):
 
@@ -540,12 +409,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
-    """
-    A reflex agent that keeps its side Pacman-free. Again,
-    this is to give you an idea of what a defensive agent
-    could be like.  It is not the best or only way to make
-    such an agent.
-    """
 
     def getFeatures(self, gameState, action):
 
@@ -608,47 +471,3 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
     def getWeights(self, gameState, action):
         return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2,
                 "enemy_a": -100, "enemy_b": -10}
-
-class DummyAgent(CaptureAgent):
-    """
-    A Dummy agent to serve as an example of the necessary agent structure.
-    You should look at baselineTeam.py for more details about how to
-    create an agent as this is the bare minimum.
-    """
-
-    def registerInitialState(self, gameState):
-        """
-        This method handles the initial setup of the
-        agent to populate useful fields (such as what team
-        we're on).
-
-        A distanceCalculator instance caches the maze distances
-        between each pair of positions, so your agents can use:
-        self.distancer.getDistance(p1, p2)
-
-        IMPORTANT: This method may run for at most 15 seconds.
-        """
-
-        '''
-        Make sure you do not delete the following line. If you would like to
-        use Manhattan distances instead of maze distances in order to save
-        on initialization time, please take a look at
-        CaptureAgent.registerInitialState in captureAgents.py.
-        '''
-        CaptureAgent.registerInitialState(self, gameState)
-
-        '''
-        Your initialization code goes here, if you need any.
-        '''
-
-    def chooseAction(self, gameState):
-        """
-        Picks among actions randomly.
-        """
-        actions = gameState.getLegalActions(self.index)
-
-        '''
-        You should change this in your own agent.
-        '''
-
-        return random.choice(actions)
