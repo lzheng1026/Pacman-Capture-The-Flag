@@ -26,7 +26,7 @@ import itertools
 
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
-    first = "OffensiveReflexAgent"
+    first = "DefensiveReflexAgent"
     second = "DummyAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
@@ -42,8 +42,8 @@ class ParticlesCTFAgent(CaptureAgent):
 
     def registerInitialState(self, gameState, numParticles=600):
         # =====original register initial state=======
-        self.start = gameState.getAgentPosition(self.index)
         CaptureAgent.registerInitialState(self, gameState)
+        self.start = gameState.getAgentPosition(self.index)
         # =====ParticleCTFAgent init================
         self.setNumParticles(numParticles)
         self.initialize(gameState)
@@ -207,6 +207,10 @@ class ParticlesCTFAgent(CaptureAgent):
         Picks among the actions with the highest Q(s,a).
         """
         # ============================================
+
+        # print(str(gameState.getAgentPosition(self.getOpponents(gameState)[0])))
+        # input()
+
         start = time.time()
         pacmanPosition = gameState.getAgentPosition(self.index)
         self.observeState(gameState, self.a)
@@ -366,6 +370,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
     def getFeatures(self, gameState, action):
 
+        # print(str(gameState.getAgentPosition(self.getOpponents(gameState)[0])))
+        # input()
+
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
         myPos = successor.getAgentState(self.index).getPosition()
@@ -384,9 +391,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         # scared time
         opponent_a, opponent_b = self.getOpponents(gameState)
-        print("opponent a " + str(opponent_a))
-        print("state of opponent a " + str(gameState.getAgentState(opponent_a)))
-        print("scared timer of a " + str(gameState.getAgentState(opponent_a).scaredTimer))
         if gameState.getAgentState(opponent_a).scaredTimer > gameState.getAgentState(opponent_b).scaredTimer:
             scaredTime = gameState.getAgentState(opponent_a).scaredTimer
         else:
@@ -399,39 +403,45 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         care = False
         halfway = gameState.data.layout.width/2
         if self.red:
-            if myPos[0] > halfway:
+            if myPos[1] > halfway:
                 # I am on the enemy's side
                 care = True
         else: # I am on the blue team
-            if myPos[0] < halfway:
+            if myPos[1] < halfway:
                 # now i am on red team's side
                 care = True
-        #print("care? " + str(care) + "\n")
 
         if care:
 
             enemies = [successor.getAgentPosition(i) for i in self.getOpponents(successor)]
+            print(str(enemies))
             #print(str(enemies[0]))
             #print(str(enemies[1]))
             enemy_one_pos = enemies[0]
             enemy_two_pos = enemies[1]
             min_enemy_dist = 99999999999
-            if enemy_one_pos is not None:
+
+            if enemy_one_pos is not None and ((enemy_one_pos[1] > halfway and myPos[1] > halfway) or (enemy_one_pos[1] < halfway and myPos[1] < halfway)):
                 min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_one_pos))
-            if enemy_two_pos is not None:
+            if enemy_two_pos is not None and ((enemy_two_pos[1] > halfway and myPos[1] > halfway) or (enemy_two_pos[1] < halfway and myPos[1] < halfway)):
                 min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_two_pos))
+
             if enemy_one_pos is None and enemy_two_pos is None:
                 beliefs = [self.getBeliefDistribution(enemy_index) for enemy_index in self.getOpponents(gameState)]
-                enemy_one_prob = beliefs[0][beliefs[0].argMax()]
-                enemy_two_prob = beliefs[1][beliefs[1].argMax()]
-                if enemy_one_prob > enemy_two_prob:
-                    general_enemy_dist = self.getMazeDistance(myPos, beliefs[0].argMax())
+                # enemy_one_prob = beliefs[0][beliefs[0].argMax()]
+                # enemy_two_prob = beliefs[1][beliefs[1].argMax()]
+                enemy_one_dist = self.getMazeDistance(myPos, beliefs[0].argMax())
+                enemy_two_dist = self.getMazeDistance(myPos, beliefs[1].argMax())
+                general_enemy_dist = 99999999999
+                if enemy_one_dist < general_enemy_dist and ((beliefs[0].argMax()[1] > halfway and myPos[1] > halfway) or (beliefs[0].argMax()[1] < halfway and myPos[1] < halfway)):
+                    general_enemy_dist = enemy_one_dist
+                if enemy_two_dist < general_enemy_dist and ((beliefs[1].argMax()[1] > halfway and myPos[1] > halfway) or (beliefs[1].argMax()[1] < halfway and myPos[1] < halfway)):
+                    general_enemy_dist = enemy_two_dist
+
+                if general_enemy_dist < 20:
+                    features['generalEnemyDist'] = general_enemy_dist
                 else:
-                    general_enemy_dist = self.getMazeDistance(myPos, beliefs[1].argMax())
-                if general_enemy_dist < 10:
-                    features['generalEnemyDist'] = 1/float(general_enemy_dist)
-                else:
-                    features['generalEnemyDist'] = 0
+                    features['generalEnemyDist'] = 20
 
             if self.scaredMovesLeft > 5:
                 # either eat the enemy if you are close or don't care
@@ -443,7 +453,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 #print("here all the time")
                 # be scared if they are very close; within 5
                 if min_enemy_dist != 99999999999:
-                    features['minEnemyDist'] = 1/float(min_enemy_dist)
+                    print("why am i here")
+                    print(min_enemy_dist)
+                    features['minEnemyDist'] = 10-float(min_enemy_dist)
                 else:
                     features['minEnemyDist'] = 0
 
@@ -458,8 +470,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
     def getWeights(self, gameState, action):
         successor = self.getSuccessor(gameState, action)
         foodList = self.getFood(successor).asList()
-        return {'foodScore': 100, 'distanceToFood': -1, 'distanceToHome': 1000, 'distanceToCapsule': 1.2}
-        #, 'minEnemyDist': -10000, 'eatEnemyDist': -1,, 'generalEnemyDist': -1000}
+        return {'foodScore': 100, 'distanceToFood': -1, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
+                'minEnemyDist': -100, 'generalEnemyDist': 1}
+        #, 'minEnemyDist': -10000, 'eatEnemyDist': -1,, 'generalEnemyDist': 1}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
