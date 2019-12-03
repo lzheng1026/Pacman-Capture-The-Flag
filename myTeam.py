@@ -26,7 +26,7 @@ import itertools
 
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
-    first = "DefensiveReflexAgent"
+    first = "OffensiveReflexAgent"
     second = "DummyAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
@@ -42,11 +42,13 @@ class ParticlesCTFAgent(CaptureAgent):
 
     def registerInitialState(self, gameState, numParticles=600):
         # =====original register initial state=======
-        CaptureAgent.registerInitialState(self, gameState)
         self.start = gameState.getAgentPosition(self.index)
+
         # =====ParticleCTFAgent init================
         self.setNumParticles(numParticles)
         self.initialize(gameState)
+
+        CaptureAgent.registerInitialState(self, gameState)
 
     def setNumParticles(self, numParticles):
         self.numParticles = numParticles
@@ -232,14 +234,15 @@ class ParticlesCTFAgent(CaptureAgent):
                     bestAction = action
                     bestDist = dist
             return bestAction  # chooses action that make you closest to your start state
-
         aPosition = self.getEnemyPositions(self.a)
-        hypotheticalState = self.setEnemyPosition(gameState, aPosition, self.a)
+        hypotheticalState = gameState.deepCopy()
+        hypotheticalState = self.setEnemyPosition(hypotheticalState, aPosition, self.a)
 
         bPosition = self.getEnemyPositions(self.b)
         hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
 
         partner = self.partnerIndex(gameState)
+
 
         values = [self.evaluate(gameState, a) for a in actions]
         maxValue = max(values)
@@ -370,11 +373,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
     def getFeatures(self, gameState, action):
 
-        # print(str(gameState.getAgentPosition(self.getOpponents(gameState)[0])))
-        # input()
-
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
+
         myPos = successor.getAgentState(self.index).getPosition()
 
         # food
@@ -395,35 +396,22 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             scaredTime = gameState.getAgentState(opponent_a).scaredTimer
         else:
             scaredTime = gameState.getAgentState(opponent_b).scaredTimer
-        print("inside features: scared time " + str(scaredTime))
+        # print("inside features: scared time " + str(scaredTime))
 
         # enemies
 
-        # do I care about the enemy?
-        care = False
         halfway = gameState.data.layout.width/2
-        if self.red:
-            if myPos[1] > halfway:
-                # I am on the enemy's side
-                care = True
-        else: # I am on the blue team
-            if myPos[1] < halfway:
-                # now i am on red team's side
-                care = True
 
-        if care:
+        if gameState.getAgentState(self.index).isPacman:
 
-            enemies = [successor.getAgentPosition(i) for i in self.getOpponents(successor)]
-            print(str(enemies))
-            #print(str(enemies[0]))
-            #print(str(enemies[1]))
-            enemy_one_pos = enemies[0]
-            enemy_two_pos = enemies[1]
+            enemies = self.getOpponents(successor)
+            enemy_one_pos = successor.getAgentPosition(enemies[0])
+            enemy_two_pos = successor.getAgentPosition(enemies[1])
             min_enemy_dist = 99999999999
 
-            if enemy_one_pos is not None and ((enemy_one_pos[1] > halfway and myPos[1] > halfway) or (enemy_one_pos[1] < halfway and myPos[1] < halfway)):
+            if enemy_one_pos is not None and not gameState.getAgentState(enemies[0]).isPacman:
                 min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_one_pos))
-            if enemy_two_pos is not None and ((enemy_two_pos[1] > halfway and myPos[1] > halfway) or (enemy_two_pos[1] < halfway and myPos[1] < halfway)):
+            if enemy_two_pos is not None and not gameState.getAgentState(enemies[1]).isPacman:
                 min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_two_pos))
 
             if enemy_one_pos is None and enemy_two_pos is None:
@@ -445,21 +433,23 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
             if self.scaredMovesLeft > 5:
                 # either eat the enemy if you are close or don't care
+                print("WHYY")
                 if min_enemy_dist != 99999999999:
+                    print(min_enemy_dist)
                     features['eatEnemyDist'] = min_enemy_dist
                 else:
                     features['eatEnemyDist'] = 0
             else:
                 #print("here all the time")
                 # be scared if they are very close; within 5
-                if min_enemy_dist != 99999999999:
-                    print("why am i here")
+                if min_enemy_dist != 99999999999 and min_enemy_dist<10: # could break if maze is really small
                     print(min_enemy_dist)
                     features['minEnemyDist'] = 10-float(min_enemy_dist)
                 else:
                     features['minEnemyDist'] = 0
 
-            # care about it a little if it is close enough?
+        else:
+            features['generalEnemyDist'] = 20
 
         # scared moves
         if self.scaredMovesLeft > 0:
