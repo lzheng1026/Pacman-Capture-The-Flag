@@ -312,28 +312,9 @@ class ParticlesCTFAgent(CaptureAgent):
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
 
-    def getFeaturesFood(self, gameState, action, features, numCarryingLimit=3):
+    def getFeaturesFood(self, myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit=3):
 
-        numCarryingLimit = int(self.numFoodToEat/3)
-        successor = self.getSuccessor(gameState, action)
-        myPos = successor.getAgentState(self.index).getPosition()
-        foodList = self.getFood(successor).asList()
-        numFoodEaten = gameState.getAgentState(self.index).numCarrying
-        width = self.getFood(successor).width
-        halfway = width/2
-
-        if features['minEnemyDist'] > 0:
-            # very close to enemy
-            closeToEnemy = True
-        else:
-            closeToEnemy = False
-
-        if abs(myPos[0]-halfway) < 3:
-            closeToHome = True
-        else:
-            closeToHome = False
-
-        if len(foodList) <= 2 or (numFoodEaten >= numCarryingLimit and (closeToEnemy or closeToHome)):
+        if len(foodList) <= 2 or shouldGoHome:
             # we don't care about getting more food
             # only cares about going back & avoiding enemy
 
@@ -360,14 +341,23 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
-        foodGrid = self.getFood(successor)
-        width = foodGrid.width
-        height = foodGrid.height
-
         myPos = successor.getAgentState(self.index).getPosition()
 
+        foodGrid = self.getFood(successor)
+        foodList = self.getFood(successor).asList()
+        numCarryingLimit = int(self.numFoodToEat / 3)
+        numFoodEaten = gameState.getAgentState(self.index).numCarrying
+
+        width = foodGrid.width
+        height = foodGrid.height
+        halfway = foodGrid.width / 2
+
+        shouldGoHome = False
+        if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 3:
+            shouldGoHome = True
+
         # food
-        self.getFeaturesFood(gameState, action, features)
+        self.getFeaturesFood(myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit)
 
         # capsules
         capsuleList = self.getCapsules(gameState)
