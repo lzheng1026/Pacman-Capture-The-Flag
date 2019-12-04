@@ -27,7 +27,7 @@ import itertools
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
     first = "OffensiveReflexAgent"
-    second = "DummyAgent"
+    second = "DefensiveReflexAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -54,9 +54,6 @@ class ParticlesCTFAgent(CaptureAgent):
         CaptureAgent.registerInitialState(self, gameState)
 
     def initialize(self, gameState, legalPositions=None):
-
-        self.numEnemies = gameState.getNumAgents() - 2
-        self.enemies = []
         self.legalPositions = gameState.getWalls().asList(False)
         self.initializeParticles()
         self.a, self.b = self.getOpponents(gameState)
@@ -161,10 +158,7 @@ class ParticlesCTFAgent(CaptureAgent):
         else:
             successor = gameState.generateSuccessor(self.index, action)
         pos = successor.getAgentState(self.index).getPosition()
-        if debug:
-            print("pos " + str(pos))
-            print("nearestPoint " + str(nearestPoint(pos)) + "\n")
-            # The point of the if-else statement below is to make sure you are on a grid, because you could be between points
+
         if pos != nearestPoint(pos):
             # Only half a grid position was covered
             return successor.generateSuccessor(self.index, action)
@@ -179,8 +173,8 @@ class ParticlesCTFAgent(CaptureAgent):
         weights = self.getWeights(gameState, action)
 
         # debug
-        for feature in weights.keys():
-            print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
+        # for feature in weights.keys():
+        #     print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
 
         return features * weights
 
@@ -201,35 +195,16 @@ class ParticlesCTFAgent(CaptureAgent):
         return {'successorScore': 1.0}
 
     def chooseAction(self, gameState):
-        """
-        Picks among the actions with the highest Q(s,a).
-        """
-        # ============================================
-
-        # print(str(gameState.getAgentPosition(self.getOpponents(gameState)[0])))
-        # input()
 
         start = time.time()
         pacmanPosition = gameState.getAgentPosition(self.index)
         self.observeState(gameState, self.a)
         self.observeState(gameState, self.b)
         beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
-        self.displayDistributionsOverPositions(beliefs)
-        # ============================================
+        #self.displayDistributionsOverPositions(beliefs)
+
         actions = gameState.getLegalActions(self.index)
 
-        foodLeft = len(self.getFood(gameState).asList())
-
-        if foodLeft <= 2:
-            bestDist = 9999
-            for action in actions:
-                successor = self.getSuccessor(gameState, action)
-                pos2 = successor.getAgentPosition(self.index)
-                dist = self.getMazeDistance(self.start, pos2)
-                if dist < bestDist:
-                    bestAction = action
-                    bestDist = dist
-            return bestAction  # chooses action that make you closest to your start state
         aPosition = self.getEnemyPositions(self.a)
         hypotheticalState = gameState.deepCopy()
         hypotheticalState = self.setEnemyPosition(hypotheticalState, aPosition, self.a)
@@ -239,22 +214,19 @@ class ParticlesCTFAgent(CaptureAgent):
 
         partner = self.partnerIndex(gameState)
 
-        print("=========START============")
+        values = [self.evaluate(gameState, a) for a in actions]
         # ===== debug ========
-        # old statement: values = [self.evaluate(gameState, a) for a in actions]
-        values = list()
-        for a in actions:
-            print("\nAction: " + str(a))
-            value = self.evaluate(gameState, a)
-            print("resulting value: " + str(value))
-            values.append(value)
+        # values = list()
+        # for a in actions:
+        #     print("\nAction: " + str(a))
+        #     value = self.evaluate(gameState, a)
+        #     print("resulting value: " + str(value))
+        #     values.append(value)
         # =====================
-        print("==========END===========")
 
         maxValue = max(values)
         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
         bestAction = random.choice(bestActions)
-        # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
 
         # update scared moves
         if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
@@ -264,6 +236,8 @@ class ParticlesCTFAgent(CaptureAgent):
             self.scaredMoves = self.scaredMoves-1
         else:
             pass
+
+        print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
 
         return bestAction
         """
@@ -346,7 +320,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         foodList = self.getFood(successor).asList()
         numFoodEaten = gameState.getAgentState(self.index).numCarrying
         width = self.getFood(successor).width
-        height = self.getFood(successor).height
         halfway = width/2
 
         if features['minEnemyDist'] > 0:
@@ -363,18 +336,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         if len(foodList) <= 2 or (numFoodEaten >= numCarryingLimit and (closeToEnemy or closeToHome)):
             # we don't care about getting more food
             # only cares about going back & avoiding enemy
-
-            # # distance to any of the three points in the middle
-            # # top
-            # top = height
-            # # middle
-            # middle = height/2
-            # # bottom
-            # bottom = 0
-            # # incentivize to go to closest of three,
-            # middleColumn = int(width/2+1)
-            # threeDistances = [(middleColumn, top), (middleColumn, middle), (middleColumn, bottom)]
-            # minToHome = min([util.manhattanDistance(myPos, position) for position in threeDistances])
 
             minToHome = self.getMazeDistance(myPos, self.start)
 
@@ -402,9 +363,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         foodGrid = self.getFood(successor)
         width = foodGrid.width
         height = foodGrid.height
-        print(width, height)
-        print(gameState.getAgentPosition(self.index))
-
 
         myPos = successor.getAgentState(self.index).getPosition()
 
@@ -428,9 +386,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             localScaredMoves = self.scaredMoves + 40
         elif self.scaredMoves != 0:
             localScaredMoves = self.scaredMoves-1
-        else:
-            pass
-        print("scared moves " + str(localScaredMoves))
 
         # enemies
 
@@ -455,15 +410,15 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             # if enemy is not in viewing
             if enemy_one_pos is None and enemy_two_pos is None:
                 beliefs = [self.getBeliefDistribution(enemy_index) for enemy_index in self.getOpponents(gameState)]
-                enemy_one_dist = self.getMazeDistance(myPos, beliefs[0].argMax())
-                enemy_two_dist = self.getMazeDistance(myPos, beliefs[1].argMax())
+                enemy_one_loc = beliefs[0].argMax()
+                enemy_two_loc = beliefs[1].argMax()
+                enemy_one_dist = self.getMazeDistance(myPos, enemy_one_loc)
+                enemy_two_dist = self.getMazeDistance(myPos, enemy_two_loc)
                 general_enemy_dist = 99999999999
-                if enemy_one_dist < general_enemy_dist and ((beliefs[0].argMax()[0] > halfway and myPos[0] > halfway) or (beliefs[0].argMax()[0] < halfway and myPos[0] < halfway)):
+                if enemy_one_dist < general_enemy_dist and ((enemy_one_loc[0] > halfway and myPos[0] > halfway) or (enemy_one_loc[0] < halfway and myPos[0] < halfway)):
                     general_enemy_dist = enemy_one_dist
-                if enemy_two_dist < general_enemy_dist and ((beliefs[1].argMax()[0] > halfway and myPos[0] > halfway) or (beliefs[1].argMax()[0] < halfway and myPos[0] < halfway)):
+                if enemy_two_dist < general_enemy_dist and ((enemy_two_loc[0] > halfway and myPos[0] > halfway) or (enemy_two_loc[0] < halfway and myPos[0] < halfway)):
                     general_enemy_dist = enemy_two_dist
-
-                print("when gen enemy dist matters " + str(when_gen_enemy_dist_matters))
 
                 if general_enemy_dist < when_gen_enemy_dist_matters: # CAN BE MODIFIED
                     features['generalEnemyDist'] = general_enemy_dist
@@ -482,10 +437,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                     features['eatEnemyDist'] = 0
             else:
                 # be scared if they are very close
-                print("min enemy dist " + str(min_enemy_dist))
-                print("when min en dist mater " + str(when_min_enemy_dist_matters))
                 if min_enemy_dist != 99999999999 and min_enemy_dist < when_min_enemy_dist_matters: # could break if maze is really small
-                    print(min_enemy_dist)
                     features['minEnemyDist'] = when_min_enemy_dist_matters-float(min_enemy_dist)
                 else:
                     features['minEnemyDist'] = 0
@@ -499,7 +451,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
                 'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2}
-        #, 'minEnemyDist': -10000, 'eatEnemyDist': -1,, 'generalEnemyDist': 1}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
