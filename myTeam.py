@@ -45,13 +45,13 @@ class ParticlesCTFAgent(CaptureAgent):
         self.start = gameState.getAgentPosition(self.index)
 
         # =====ParticleCTFAgent init================
-        self.setNumParticles(numParticles)
+        self.numParticles = numParticles
         self.initialize(gameState)
+        # =====Features=============
+        self.numFoodToEat = len(self.getFood(gameState).asList())-2
+        self.scaredMoves = 0
 
         CaptureAgent.registerInitialState(self, gameState)
-
-    def setNumParticles(self, numParticles):
-        self.numParticles = numParticles
 
     def initialize(self, gameState, legalPositions=None):
 
@@ -62,9 +62,6 @@ class ParticlesCTFAgent(CaptureAgent):
         self.a, self.b = self.getOpponents(gameState)
         # for fail
         self.initialGameState = gameState
-        # for features
-        self.scaredMovesLeft = 0
-        self.capsulesCount = len(self.getCapsules(gameState))
 
     def setEnemyPosition(self, gameState, pos, enemyIndex):
 
@@ -183,8 +180,7 @@ class ParticlesCTFAgent(CaptureAgent):
 
         # debug
         for feature in weights.keys():
-            print(str(feature) + " " + str(features[feature]))
-        print("\n")
+            print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
 
         return features * weights
 
@@ -243,12 +239,33 @@ class ParticlesCTFAgent(CaptureAgent):
 
         partner = self.partnerIndex(gameState)
 
+        print("=========START============")
+        # ===== debug ========
+        # old statement: values = [self.evaluate(gameState, a) for a in actions]
+        values = list()
+        for a in actions:
+            print("\nAction: " + str(a))
+            value = self.evaluate(gameState, a)
+            print("resulting value: " + str(value))
+            values.append(value)
+        # =====================
+        print("==========END===========")
 
-        values = [self.evaluate(gameState, a) for a in actions]
         maxValue = max(values)
         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+        bestAction = random.choice(bestActions)
         # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
-        return random.choice(bestActions)
+
+        # update scared moves
+        if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
+            # we ate a capsule!
+            self.scaredMoves = self.scaredMoves + 40
+        elif self.scaredMoves != 0:
+            self.scaredMoves = self.scaredMoves-1
+        else:
+            pass
+
+        return bestAction
         """
         if self.getMazeDistance(aPosition,pacmanPosition) < 10:
             order = [self.index, self.a]
@@ -321,39 +338,46 @@ class ParticlesCTFAgent(CaptureAgent):
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
 
-    def getFeaturesFood(self, gameState, action, features, numCarryingLimit=25):
+    def getFeaturesFood(self, gameState, action, features, numCarryingLimit=3):
 
+        numCarryingLimit = int(self.numFoodToEat/3)
         successor = self.getSuccessor(gameState, action)
         myPos = successor.getAgentState(self.index).getPosition()
         foodList = self.getFood(successor).asList()
         numFoodEaten = gameState.getAgentState(self.index).numCarrying
+        width = self.getFood(successor).width
+        height = self.getFood(successor).height
+        halfway = width/2
 
-        #print("numFoodEaten " + str(numFoodEaten))
+        if features['minEnemyDist'] > 0:
+            # very close to enemy
+            closeToEnemy = True
+        else:
+            closeToEnemy = False
 
-        if len(foodList) <= 2 or numFoodEaten >= numCarryingLimit:
+        if abs(myPos[0]-halfway) < 3:
+            closeToHome = True
+        else:
+            closeToHome = False
+
+        if len(foodList) <= 2 or (numFoodEaten >= numCarryingLimit and (closeToEnemy or closeToHome)):
             # we don't care about getting more food
             # only cares about going back & avoiding enemy
 
-            # distance to any of the three points in the middle
-            # top
-            top = 0
-            # middle
-            middle = int((gameState.data.layout.height-1)/2)
-            # bottom
-            bottom = gameState.data.layout.height-1
+            # # distance to any of the three points in the middle
+            # # top
+            # top = height
+            # # middle
+            # middle = height/2
+            # # bottom
+            # bottom = 0
+            # # incentivize to go to closest of three,
+            # middleColumn = int(width/2+1)
+            # threeDistances = [(middleColumn, top), (middleColumn, middle), (middleColumn, bottom)]
+            # minToHome = min([util.manhattanDistance(myPos, position) for position in threeDistances])
 
-            # print("height of layout  " + str(gameState.data.layout.height))
-            # print("top " + str(top))
-            # print("middle " + str(middle))
-            # print("bottom " + str(bottom))
-
-            # incentivize to go to closest of three,
-            middleColumn = int((gameState.data.layout.width-1)/2)
-            # print("middleColumn " + str(middleColumn))
-            threeDistances = [nearestPoint((float(top), float(middleColumn))), nearestPoint((float(middle), float(middleColumn))), nearestPoint((float(bottom), float(middleColumn)))]
-            # minToHome = min([self.getMazeDistance(myPos, position) for position in threeDistances])
             minToHome = self.getMazeDistance(myPos, self.start)
-            # print("min to home " + str(minToHome))
+
             if minToHome == 0:
                 minToHome = 0.000001
             # add to features
@@ -375,6 +399,12 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
+        foodGrid = self.getFood(successor)
+        width = foodGrid.width
+        height = foodGrid.height
+        print(width, height)
+        print(gameState.getAgentPosition(self.index))
+
 
         myPos = successor.getAgentState(self.index).getPosition()
 
@@ -391,16 +421,22 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 features['distanceToCapsule'] = -8
 
         # scared time
-        opponent_a, opponent_b = self.getOpponents(gameState)
-        if gameState.getAgentState(opponent_a).scaredTimer > gameState.getAgentState(opponent_b).scaredTimer:
-            scaredTime = gameState.getAgentState(opponent_a).scaredTimer
+        localScaredMoves = 0
+        # when we eat a capsule
+        if len(capsuleList) != len(self.getCapsules(successor)):
+            # we ate a capsule!
+            localScaredMoves = self.scaredMoves + 40
+        elif self.scaredMoves != 0:
+            localScaredMoves = self.scaredMoves-1
         else:
-            scaredTime = gameState.getAgentState(opponent_b).scaredTimer
-        # print("inside features: scared time " + str(scaredTime))
+            pass
+        print("scared moves " + str(localScaredMoves))
 
         # enemies
 
-        halfway = gameState.data.layout.width/2
+        halfway = width/2
+        when_gen_enemy_dist_matters = int(min(width, height) * 2 / 3)
+        when_min_enemy_dist_matters = 10
 
         if gameState.getAgentState(self.index).isPacman:
 
@@ -409,59 +445,60 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             enemy_two_pos = successor.getAgentPosition(enemies[1])
             min_enemy_dist = 99999999999
 
-            if enemy_one_pos is not None and not gameState.getAgentState(enemies[0]).isPacman:
+            # if enemies are in viewing
+            if enemy_one_pos is not None and ((enemy_one_pos[0] > halfway and myPos[0] > halfway) or (enemy_one_pos[0] < halfway and myPos[0] < halfway)):
                 min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_one_pos))
-            if enemy_two_pos is not None and not gameState.getAgentState(enemies[1]).isPacman:
+
+            if enemy_two_pos is not None and ((enemy_two_pos[0] > halfway and myPos[0] > halfway) or (enemy_two_pos[0] < halfway and myPos[0] < halfway)):
                 min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_two_pos))
 
+            # if enemy is not in viewing
             if enemy_one_pos is None and enemy_two_pos is None:
                 beliefs = [self.getBeliefDistribution(enemy_index) for enemy_index in self.getOpponents(gameState)]
-                # enemy_one_prob = beliefs[0][beliefs[0].argMax()]
-                # enemy_two_prob = beliefs[1][beliefs[1].argMax()]
                 enemy_one_dist = self.getMazeDistance(myPos, beliefs[0].argMax())
                 enemy_two_dist = self.getMazeDistance(myPos, beliefs[1].argMax())
                 general_enemy_dist = 99999999999
-                if enemy_one_dist < general_enemy_dist and ((beliefs[0].argMax()[1] > halfway and myPos[1] > halfway) or (beliefs[0].argMax()[1] < halfway and myPos[1] < halfway)):
+                if enemy_one_dist < general_enemy_dist and ((beliefs[0].argMax()[0] > halfway and myPos[0] > halfway) or (beliefs[0].argMax()[0] < halfway and myPos[0] < halfway)):
                     general_enemy_dist = enemy_one_dist
-                if enemy_two_dist < general_enemy_dist and ((beliefs[1].argMax()[1] > halfway and myPos[1] > halfway) or (beliefs[1].argMax()[1] < halfway and myPos[1] < halfway)):
+                if enemy_two_dist < general_enemy_dist and ((beliefs[1].argMax()[0] > halfway and myPos[0] > halfway) or (beliefs[1].argMax()[0] < halfway and myPos[0] < halfway)):
                     general_enemy_dist = enemy_two_dist
 
-                if general_enemy_dist < 20:
+                print("when gen enemy dist matters " + str(when_gen_enemy_dist_matters))
+
+                if general_enemy_dist < when_gen_enemy_dist_matters: # CAN BE MODIFIED
                     features['generalEnemyDist'] = general_enemy_dist
                 else:
-                    features['generalEnemyDist'] = 20
+                    features['generalEnemyDist'] = when_gen_enemy_dist_matters
 
-            if self.scaredMovesLeft > 5:
+            if localScaredMoves > 0:
+                # don't care about enemy unless really close
+                features['generalEnemyDist'] = when_gen_enemy_dist_matters
+
                 # either eat the enemy if you are close or don't care
-                print("WHYY")
-                if min_enemy_dist != 99999999999:
-                    print(min_enemy_dist)
-                    features['eatEnemyDist'] = min_enemy_dist
+                if min_enemy_dist != 99999999999 and min_enemy_dist < when_min_enemy_dist_matters:
+                    # you are close!
+                    features['eatEnemyDist'] = when_min_enemy_dist_matters-float(min_enemy_dist)
                 else:
                     features['eatEnemyDist'] = 0
             else:
-                #print("here all the time")
-                # be scared if they are very close; within 5
-                if min_enemy_dist != 99999999999 and min_enemy_dist<10: # could break if maze is really small
+                # be scared if they are very close
+                print("min enemy dist " + str(min_enemy_dist))
+                print("when min en dist mater " + str(when_min_enemy_dist_matters))
+                if min_enemy_dist != 99999999999 and min_enemy_dist < when_min_enemy_dist_matters: # could break if maze is really small
                     print(min_enemy_dist)
-                    features['minEnemyDist'] = 10-float(min_enemy_dist)
+                    features['minEnemyDist'] = when_min_enemy_dist_matters-float(min_enemy_dist)
                 else:
                     features['minEnemyDist'] = 0
 
         else:
             features['generalEnemyDist'] = 20
 
-        # scared moves
-        if self.scaredMovesLeft > 0:
-            self.scaredMovesLeft -= 1
-
         return features
 
     def getWeights(self, gameState, action):
-        successor = self.getSuccessor(gameState, action)
-        foodList = self.getFood(successor).asList()
-        return {'foodScore': 100, 'distanceToFood': -1, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
-                'minEnemyDist': -100, 'generalEnemyDist': 1}
+
+        return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
+                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2}
         #, 'minEnemyDist': -10000, 'eatEnemyDist': -1,, 'generalEnemyDist': 1}
 
 
