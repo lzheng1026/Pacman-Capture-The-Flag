@@ -20,6 +20,7 @@ from util import nearestPoint
 import itertools
 
 debug = False
+debug_capsule = True
 
 
 #################
@@ -29,7 +30,7 @@ debug = False
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
     first = "OffensiveReflexAgent"
-    second = "DummyAgent"
+    second = "DefensiveReflexAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -42,7 +43,7 @@ class ParticlesCTFAgent(CaptureAgent):
     CTF Agent that models enemies using particle filtering.
     """
 
-    def registerInitialState(self, gameState, numParticles=600):
+    def registerInitialState(self, gameState, numParticles=1000):
         # =====original register initial state=======
         self.start = gameState.getAgentPosition(self.index)
 
@@ -54,6 +55,9 @@ class ParticlesCTFAgent(CaptureAgent):
         self.scaredMoves = 0
         self.defenseScaredMoves = 0
         CaptureAgent.registerInitialState(self, gameState)
+        self.stopped = 0
+        self.stuck = False
+        self.numStuckSteps = 0
 
     def initialize(self, gameState, legalPositions=None):
         self.legalPositions = gameState.getWalls().asList(False)
@@ -66,6 +70,7 @@ class ParticlesCTFAgent(CaptureAgent):
         foodGrid = self.getFood(gameState)
         halfway = foodGrid.width/2
         conf = game.Configuration(pos, game.Directions.STOP)
+
 
         #FOR THE WEIRD ERROR CHECK
         if gameState.isOnRedTeam(self.index):
@@ -215,152 +220,56 @@ class ParticlesCTFAgent(CaptureAgent):
     def chooseAction(self, gameState):
 
         start = time.time()
-        pacmanPosition = gameState.getAgentPosition(self.index)
         self.observeState(gameState, self.a)
         self.observeState(gameState, self.b)
-        beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
         #self.displayDistributionsOverPositions(beliefs)
 
         actions = gameState.getLegalActions(self.index)
 
-        aPosition = self.getEnemyPositions(self.a)
-        hypotheticalState = gameState.deepCopy()
-        hypotheticalState = self.setEnemyPosition(hypotheticalState, aPosition, self.a)
-
-        bPosition = self.getEnemyPositions(self.b)
-        hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
-
-        if self.getMazeDistance(aPosition, pacmanPosition) < 7 and self.getBeliefDistribution(self.a)[aPosition] > 0.5:
-            #print("***** in mini max ******")
-            order = [self.index, self.a]
-            if self.getMazeDistance(aPosition, pacmanPosition) < 3:
-                result = self.maxValue(hypotheticalState, order, 0, 3, -10000000, 10000000,start)
-            else:
-                result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000, start)
-            # update scared moves
-            if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, result[1]))):
-                # we ate a capsule!
-                self.scaredMoves = self.scaredMoves + 40
-            elif self.scaredMoves != 0:
-                self.scaredMoves = self.scaredMoves - 1
-            else:
-                pass
-            if time.time() - start > 0.1:
-                print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
-            return result[1]
-        elif self.getMazeDistance(bPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.b)[bPosition] > 0.5:
-            print("***** in mini max ******")
-            order = [self.index, self.b]
-            if self.getMazeDistance(bPosition, pacmanPosition) < 3:
-                result = self.maxValue(hypotheticalState, order, 0, 3, -10000000, 10000000, start)
-            else:
-                result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000, start)
-            # update scared moves
-            if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, result[1]))):
-                # we ate a capsule!
-                self.scaredMoves = self.scaredMoves + 40
-            elif self.scaredMoves != 0:
-                self.scaredMoves = self.scaredMoves - 1
-            else:
-                pass
-            if time.time() - start > 0.1:
-                print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
-            return result[1]
-
+        # values = [self.evaluate(gameState, a) for a in actions]
+        if debug:
+            values = list()
+            print("=======Start=========")
+            for a in actions:
+                print("Action: " + str(a))
+                value = self.evaluate(gameState, a)
+                print("\tValue: " + str(value))
+                print("\n")
+                values.append(value)
+            print("========End========")
         else:
-            # values = [self.evaluate(gameState, a) for a in actions]
-            if debug:
-                values = list()
-                print("=======Start=========")
-                for a in actions:
-                    print("Action: " + str(a))
-                    value = self.evaluate(gameState, a)
-                    print("\tValue: " + str(value))
-                    print("\n")
-                    values.append(value)
-                print("========End========")
-            else:
-                values = [self.evaluate(gameState, a) for a in actions]
+            values = [self.evaluate(gameState, a) for a in actions]
 
-            maxValue = max(values)
-            bestActions = [a for a, v in zip(actions, values) if v == maxValue]
-            bestAction = random.choice(bestActions)
-            # update scared moves
-            if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
-                # we ate a capsule!
-                self.scaredMoves = self.scaredMoves + 40
-            elif self.scaredMoves != 0:
-                self.scaredMoves = self.scaredMoves - 1
-            else:
-                pass
-            # update defense scared moves
-            numCapsulesDefending = len(gameState.getBlueCapsules())
-            numCapsulesLeft = len(self.getSuccessor(gameState, bestAction).getBlueCapsules())
-            if self.red:
-                numCapsulesDefending = len(gameState.getRedCapsules())
-                numCapsulesDefending = len(self.getSuccessor(gameState, bestAction).getRedCapsules())
-            if numCapsulesLeft < numCapsulesDefending:
-                # enemy ate a capsule!
-                print("enemy ate a capsule!")
-                self.defenseScaredMoves += 40
-            elif self.defenseScaredMoves != 0:
-                self.defenseScaredMoves -= 1
-            #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
-            return bestAction
+        maxValue = max(values)
+        bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+        bestAction = random.choice(bestActions)
 
-
-    def maxValue(self, gameState, order, index, depth, alpha, beta, start):
-        # returns a value and an action so getAction can return the best action
-        if gameState.isOver() or depth == 0 or ((time.time()-start) > 0.9):
-            return [self.evaluate(gameState, None), None]
-        v = -10000000
-        action = None
-        for a in gameState.getLegalActions(order[0]):
-            try:
-                newState = gameState.generateSuccessor(order[0], a)
-            except:
-                print("exception occured")
-                return [self.evaluate(gameState, None), None]
-            newScore = self.minValue(newState, order, index + 1, depth, alpha, beta,start)
-            if newScore > v:
-                v = newScore
-                action = a
-            if v > beta:
-                return [v, a]
-            alpha = max(alpha, v)
-        return [v, action]
-
-    def minValue(self, gameState, order, index, depth, alpha, beta, start):
-        if gameState.isOver() or depth == 0 or ((time.time()-start) > 0.9):
-            return self.evaluate(gameState, None)
-        v = 10000000
-        for a in gameState.getLegalActions(order[index]):
-            try:
-                newState = gameState.generateSuccessor(order[index], a)
-            except:
-                print("exception occured")
-                return self.evaluate(gameState, None)
-            # if pacman goes next, here is where depth is decremented
-            if index + 1 >= len(order):
-                v = min(v, self.maxValue(newState, order, 0, depth - 1, alpha, beta,start)[0])
-            # if another enemy goes
-            else:
-                #change to max and [0] if using partner
-                v = min(v, self.minValue(newState, order, index + 1, depth, alpha, beta,start))
-            if v < alpha:
-                return v
-            beta = min(beta, v)
-        return v
-
-    def partnerIndex(self, gameState):
-        redTeam = gameState.getRedTeamIndices()
-        blueTeam = gameState.getBlueTeamIndices()
-        if self.index in redTeam:
-            redTeam.remove(self.index)
-            return redTeam[0]
+        # update scared moves
+        if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
+            # we ate a capsule!
+            self.scaredMoves = self.scaredMoves + 40
+        elif self.scaredMoves != 0:
+            self.scaredMoves = self.scaredMoves - 1
         else:
-            blueTeam.remove(self.index)
-            return blueTeam[0]
+            pass
+        # update defense scared moves
+        numCapsulesDefending = len(gameState.getBlueCapsules())
+        numCapsulesLeft = len(self.getSuccessor(gameState, bestAction).getBlueCapsules())
+        if self.red:
+            numCapsulesLeft = len(gameState.getRedCapsules())
+            numCapsulesDefending = len(self.getSuccessor(gameState,bestAction).getRedCapsules())
+        if numCapsulesLeft < numCapsulesDefending:
+            # enemy ate a capsule!
+            print("enemy ate a capsule!")
+            self.defenseScaredMoves += 40
+        elif self.defenseScaredMoves != 0:
+            self.defenseScaredMoves -= 1
+
+        if time.time() - start > 0.1:
+            print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+
+        return bestAction
+
 
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
@@ -440,7 +349,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
             # food
             shouldGoHome = False
-            if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 3: shouldGoHome = True
+            if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 4: shouldGoHome = True
             self.getFeaturesFoodOffenseSide(myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit)
 
             # capsules
@@ -497,18 +406,187 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 else:
                     features['minEnemyDist'] = when_min_enemy_dist_matters - float(min_enemy_dist)
 
+            if debug_capsule:
+                if localScaredMoves>0:
+                    print("pacman location: " + str(gameState.getAgentPosition(self.index)))
+                    print("action: " + str(action))
+                    print("local scared moves: " + str(localScaredMoves))
+                    print("\n")
+
         # punish staying in the same place
         if action == Directions.STOP: features['stop'] = 1
+        #if self.stuck: features['stop'] = 10
         # punish just doing the reverse
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
+
+        # stuck situation
+        if self.stuck: # didn't test stuck
+            minToHome = self.getMazeDistance(myPos, self.start)
+            if minToHome == 0: minToHome = 0.000001
+            # add to features
+            features['distanceToHome'] = -float(minToHome)
+            print("we are stuck!")
 
         return features
 
     def getWeights(self, gameState, action):
 
         return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
-                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -50, 'rev': -2}
+                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -75, 'rev': -50}
+    def chooseAction(self, gameState):
+
+        start = time.time()
+        pacmanPosition = gameState.getAgentPosition(self.index)
+        self.observeState(gameState, self.a)
+        self.observeState(gameState, self.b)
+        beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
+        #self.displayDistributionsOverPositions(beliefs)
+
+        actions = gameState.getLegalActions(self.index)
+
+        aPosition = self.getEnemyPositions(self.a)
+        bPosition = self.getEnemyPositions(self.b)
+        hypotheticalState = gameState.deepCopy()
+
+
+        if self.getMazeDistance(aPosition, pacmanPosition) < 7 and self.getBeliefDistribution(self.a)[aPosition] > 0.5:
+            hypotheticalState = self.setEnemyPosition(hypotheticalState, aPosition, self.a)
+            #print("***** in mini max ******")
+            order = [self.index, self.a]
+            if self.getMazeDistance(aPosition, pacmanPosition) < 3:
+                result = self.maxValue(hypotheticalState, order, 0, 3, -10000000, 10000000,start)
+            else:
+                result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000, start)
+            # update scared moves
+            if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, result[1]))):
+                # we ate a capsule!
+                self.scaredMoves = self.scaredMoves + 40
+            elif self.scaredMoves != 0:
+                self.scaredMoves = self.scaredMoves - 1
+            else:
+                pass
+            bestAction = result[1]
+        elif self.getMazeDistance(bPosition, pacmanPosition) < 7 and self.getBeliefDistribution(self.b)[bPosition] > 0.5:
+            hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
+            #print("***** in mini max ******")
+            order = [self.index, self.b]
+            if self.getMazeDistance(bPosition, pacmanPosition) < 3:
+                result = self.maxValue(hypotheticalState, order, 0, 3, -10000000, 10000000, start)
+            else:
+                result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000, start)
+            bestAction = result[1]
+
+        else:
+            # values = [self.evaluate(gameState, a) for a in actions]
+            if debug:
+                values = list()
+                print("=======Start=========")
+                for a in actions:
+                    print("Action: " + str(a))
+                    value = self.evaluate(gameState, a)
+                    print("\tValue: " + str(value))
+                    print("\n")
+                    values.append(value)
+                print("========End========")
+            else:
+                values = [self.evaluate(gameState, a) for a in actions]
+
+            maxValue = max(values)
+            bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+            bestAction = random.choice(bestActions)
+
+        # update scared moves
+        if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
+            # we ate a capsule!
+            self.scaredMoves = self.scaredMoves + 40
+        elif self.scaredMoves != 0:
+            self.scaredMoves = self.scaredMoves - 1
+        else:
+            pass
+        # update defense scared moves
+        numCapsulesDefending = len(gameState.getBlueCapsules())
+        numCapsulesLeft = len(self.getSuccessor(gameState, bestAction).getBlueCapsules())
+        if self.red:
+            numCapsulesLeft = len(gameState.getRedCapsules())
+            numCapsulesDefending = len(self.getSuccessor(gameState,bestAction).getRedCapsules())
+        if numCapsulesLeft < numCapsulesDefending:
+            # enemy ate a capsule!
+            print("enemy ate a capsule!")
+            self.defenseScaredMoves += 40
+        elif self.defenseScaredMoves != 0:
+            self.defenseScaredMoves -= 1
+
+        if time.time() - start > 0.1:
+            print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+
+        if bestAction == 'Stop':
+            self.stopped += 1
+            if self.stopped >= 3:
+                self.stuck = True
+        else:
+            if self.stuck and self.numStuckSteps<6:
+                self.numStuckSteps += 1
+            elif self.stuck and self.numStuckSteps>=6:
+                self.stuck = False
+                self.stopped = 0
+            else:
+                self.stopped = 0
+
+        print("self.stopped status every time we choose an action " + str(self.stopped))
+        print("bestaction " + str(bestAction))
+
+        if gameState.getAgentPosition(self.index) == self.start:
+            # reset everything
+            self.stuck = False
+            self.stopped = 0
+            self.numStuckSteps = 0
+
+        return bestAction
+
+
+    def maxValue(self, gameState, order, index, depth, alpha, beta, start):
+        # returns a value and an action so getAction can return the best action
+        if gameState.isOver() or depth == 0 or ((time.time()-start) > 0.9):
+            return [self.evaluate(gameState, None), None]
+        v = -10000000
+        action = None
+        for a in gameState.getLegalActions(order[0]):
+            try:
+                newState = gameState.generateSuccessor(order[0], a)
+            except:
+                print("exception occured")
+                return [self.evaluate(gameState, None), None]
+            newScore = self.minValue(newState, order, index + 1, depth, alpha, beta,start)
+            if newScore > v:
+                v = newScore
+                action = a
+            if v > beta:
+                return [v, a]
+            alpha = max(alpha, v)
+        return [v, action]
+
+    def minValue(self, gameState, order, index, depth, alpha, beta, start):
+        if gameState.isOver() or depth == 0 or ((time.time()-start) > 0.9):
+            return self.evaluate(gameState, None)
+        v = 10000000
+        for a in gameState.getLegalActions(order[index]):
+            try:
+                newState = gameState.generateSuccessor(order[index], a)
+            except:
+                print("exception occured")
+                return self.evaluate(gameState, None)
+            # if pacman goes next, here is where depth is decremented
+            if index + 1 >= len(order):
+                v = min(v, self.maxValue(newState, order, 0, depth - 1, alpha, beta,start)[0])
+            # if another enemy goes
+            else:
+                #change to max and [0] if using partner
+                v = min(v, self.minValue(newState, order, index + 1, depth, alpha, beta,start))
+            if v < alpha:
+                return v
+            beta = min(beta, v)
+        return v
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
@@ -524,7 +602,7 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
         numCapsulesDefending = len(gameState.getBlueCapsules())
         numCapsulesLeft = len(successor.getBlueCapsules())
         if self.red:
-            numCapsulesDefending = len(gameState.getRedCapsules())
+            numCapsulesLeft = len(gameState.getRedCapsules())
             numCapsulesDefending = len(successor.getRedCapsules())
 
         # are we scared?
@@ -542,6 +620,11 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
         enemyIndices = self.getOpponents(gameState)
         invaders = [successor.getAgentState(index) for index in enemyIndices if successor.getAgentState(index).isPacman and successor.getAgentState(index).getPosition() != None]
 
+        if len(invaders)==2:
+            for i in invaders:
+                print(i)
+                print(i.isPacman)
+            input()
         minEnemyDist = 0
         genEnemyDist = 0
         smallerGenEnemyDist = 0
@@ -615,6 +698,7 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
 
         # punish staying in the same place
         if action == Directions.STOP: features['stop'] = 1
+        #if self.stuck: features['stop'] = 10
         # punish just doing the reverse
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
