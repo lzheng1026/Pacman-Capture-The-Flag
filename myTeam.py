@@ -19,6 +19,8 @@ import game
 from util import nearestPoint
 import itertools
 
+debug = False
+
 
 #################
 # Team creation #
@@ -173,8 +175,9 @@ class ParticlesCTFAgent(CaptureAgent):
         weights = self.getWeights(gameState, action)
 
         # debug
-        # for feature in weights.keys():
-        #     print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
+        if debug:
+            for feature in weights.keys():
+                print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
 
         return features * weights
 
@@ -214,14 +217,19 @@ class ParticlesCTFAgent(CaptureAgent):
 
         partner = self.partnerIndex(gameState)
 
-        values = [self.evaluate(gameState, a) for a in actions]
+        # values = [self.evaluate(gameState, a) for a in actions]
         # ===== debug ========
-        # values = list()
-        # for a in actions:
-        #     print("\nAction: " + str(a))
-        #     value = self.evaluate(gameState, a)
-        #     print("resulting value: " + str(value))
-        #     values.append(value)
+        if debug:
+            print("==================START==================")
+            values = list()
+            for a in actions:
+                print("\nAction: " + str(a))
+                value = self.evaluate(gameState, a)
+                print("resulting value: " + str(value))
+                values.append(value)
+            print("==================END==================")
+        else:
+            values = [self.evaluate(gameState, a) for a in actions]
         # =====================
 
         maxValue = max(values)
@@ -312,9 +320,9 @@ class ParticlesCTFAgent(CaptureAgent):
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
 
-    def getFeaturesFood(self, myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit=3):
+    def getFeaturesFood(self, myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit):
 
-        if len(foodList) <= 2 or shouldGoHome:
+        if len(foodList) <= 2 or (numFoodEaten>=numCarryingLimit and shouldGoHome):
             # we don't care about getting more food
             # only cares about going back & avoiding enemy
 
@@ -440,7 +448,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
     def getWeights(self, gameState, action):
 
         return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
-                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2}
+                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
