@@ -19,7 +19,7 @@ import game
 from util import nearestPoint
 import itertools
 
-debug = False
+debug = True
 
 
 #################
@@ -28,8 +28,8 @@ debug = False
 
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
-    first = "OffensiveReflexAgent"
-    second = "DummyAgent"
+    first = "DefensiveReflexAgent"
+    second = "OffensiveReflexAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -42,7 +42,7 @@ class ParticlesCTFAgent(CaptureAgent):
     CTF Agent that models enemies using particle filtering.
     """
 
-    def registerInitialState(self, gameState, numParticles=600):
+    def registerInitialState(self, gameState, numParticles=5000):
         # =====original register initial state=======
         self.start = gameState.getAgentPosition(self.index)
 
@@ -147,6 +147,45 @@ class ParticlesCTFAgent(CaptureAgent):
             else:
                 self.particlesB = util.nSample(values, keys, self.numParticles)
 
+    def elapseTime(self, gameState, enemyIndex):
+        
+        if enemyIndex == self.a: 
+            particles = self.particlesA
+        else:
+            particles = self.particlesB
+
+        for i in range(self.numParticles):
+            x,y = particles[i]
+
+            # find all legal positions above or below it
+            north = nearestPoint((x, y-1))
+            south = nearestPoint((x, y+1))
+            west = nearestPoint((x+1, y))
+            east = nearestPoint((x-1, y))
+
+            possibleLegalPositions = set(self.legalPositions)
+            legalPositions = list()
+
+            if north in possibleLegalPositions: legalPositions.append(north)
+            if south in possibleLegalPositions: legalPositions.append(south)
+            if west in possibleLegalPositions: legalPositions.append(west)
+            if east in possibleLegalPositions: legalPositions.append(east)
+            
+            new_position = random.choice(legalPositions)
+            
+            particles[i] = new_position
+            
+        if enemyIndex == self.a: 
+            self.particlesA = particles
+        else:
+            self.particlesB = particles
+
+        # # loop through particles
+        # for i in range(len(self.particles)):
+        #     newPosDist = self.getPositionDistribution(self.setGhostPosition(gameState, self.particles[i])) # transition prob
+        #     self.particles[i] = util.sample(newPosDist)
+
+
     def getBeliefDistribution(self, enemyIndex):
         allPossible = util.Counter()
         if enemyIndex == self.a:
@@ -216,11 +255,18 @@ class ParticlesCTFAgent(CaptureAgent):
 
         start = time.time()
         pacmanPosition = gameState.getAgentPosition(self.index)
+
+        # elapse time
+        self.elapseTime(gameState, self.a)
+        self.elapseTime(gameState, self.b)
+        # ----------------elapse
+        
         self.observeState(gameState, self.a)
         self.observeState(gameState, self.b)
+        
         beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
-        #self.displayDistributionsOverPositions(beliefs)
-
+        self.displayDistributionsOverPositions(beliefs)
+        
         actions = gameState.getLegalActions(self.index)
 
         aPosition = self.getEnemyPositions(self.a)
@@ -230,7 +276,7 @@ class ParticlesCTFAgent(CaptureAgent):
         bPosition = self.getEnemyPositions(self.b)
         hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
 
-        if self.getMazeDistance(aPosition, pacmanPosition) < 7 and self.getBeliefDistribution(self.a)[aPosition] > 0.5:
+        if self.getMazeDistance(aPosition, pacmanPosition) < 7 and self.getBeliefDistribution(self.a)[aPosition] > 0.5 and False:
             #print("***** in mini max ******")
             order = [self.index, self.a]
             if self.getMazeDistance(aPosition, pacmanPosition) < 3:
@@ -248,7 +294,7 @@ class ParticlesCTFAgent(CaptureAgent):
             if time.time() - start > 0.1:
                 print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
             return result[1]
-        elif self.getMazeDistance(bPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.b)[bPosition] > 0.5:
+        elif self.getMazeDistance(bPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.b)[bPosition] > 0.5 and False:
             print("***** in mini max ******")
             order = [self.index, self.b]
             if self.getMazeDistance(bPosition, pacmanPosition) < 3:
@@ -298,7 +344,7 @@ class ParticlesCTFAgent(CaptureAgent):
             numCapsulesLeft = len(self.getSuccessor(gameState, bestAction).getBlueCapsules())
             if self.red:
                 numCapsulesDefending = len(gameState.getRedCapsules())
-                numCapsulesDefending = len(self.getSuccessor(gameState, bestAction).getRedCapsules())
+                numCapsulesLeft = len(self.getSuccessor(gameState, bestAction).getRedCapsules())
             if numCapsulesLeft < numCapsulesDefending:
                 # enemy ate a capsule!
                 print("enemy ate a capsule!")
@@ -428,6 +474,33 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         # set default enemies value
         features['generalEnemyDist'] = when_gen_enemy_dist_matters
 
+        # enemies
+
+        enemies = self.getOpponents(successor)  # returns list of enemy indices
+        enemy_one_pos = successor.getAgentPosition(enemies[0])  # enemy one pos
+        enemy_two_pos = successor.getAgentPosition(enemies[1])  # enemy two pos
+        
+        enemy_one_dist = 0
+        for loc, prob in self.getBeliefDistribution(enemies[0]).items():
+            enemy_one_dist += self.getMazeDistance(myPos, loc)*prob
+        enemy_two_dist = 0
+        for loc, prob in self.getBeliefDistribution(enemies[1]).items():
+            enemy_two_dist += self.getMazeDistance(myPos, loc)*prob
+        
+        # enemy_one_loc = self.getBeliefDistribution(enemies[0]).argMax()
+        # enemy_two_loc = self.getBeliefDistribution(enemies[1]).argMax()
+        # enemy_one_dist = self.getMazeDistance(myPos, enemy_one_loc)
+        # enemy_two_dist = self.getMazeDistance(myPos, enemy_two_loc)
+        general_enemy_dist = enemy_two_dist
+        if enemy_one_dist > enemy_two_pos: general_enemy_dist = enemy_one_dist
+
+        # if enemy_one_dist < general_enemy_dist and ((enemy_one_loc[0] > halfway and myPos[0] > halfway) or (
+        #         enemy_one_loc[0] < halfway and myPos[0] < halfway)):
+        #     general_enemy_dist = enemy_one_dist
+        # if enemy_two_dist < general_enemy_dist and ((enemy_two_loc[0] > halfway and myPos[0] > halfway) or (
+        #         enemy_two_loc[0] < halfway and myPos[0] < halfway)):
+        #     general_enemy_dist = enemy_two_dist
+
         if not gameState.getAgentState(self.index).isPacman: # on defense
 
             # food
@@ -435,6 +508,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
             # set default capsule value
             features['distanceToCapsule'] = -8
+            
+            # leave enemy
+            # ?
 
         else: # on offense
 
@@ -456,24 +532,8 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             elif self.scaredMoves != 0:
                 localScaredMoves = self.scaredMoves-1
 
-            # enemies
-
-            enemies = self.getOpponents(successor) # returns list of enemy indices
-            enemy_one_pos = successor.getAgentPosition(enemies[0]) # enemy one pos
-            enemy_two_pos = successor.getAgentPosition(enemies[1]) # enemy two pos
-
             # check if any enemy is in viewing
             if enemy_one_pos is None and enemy_two_pos is None:
-
-                enemy_one_loc = self.getBeliefDistribution(enemies[0]).argMax()
-                enemy_two_loc = self.getBeliefDistribution(enemies[1]).argMax()
-                enemy_one_dist = self.getMazeDistance(myPos, enemy_one_loc)
-                enemy_two_dist = self.getMazeDistance(myPos, enemy_two_loc)
-
-                if enemy_one_dist < general_enemy_dist and ((enemy_one_loc[0] > halfway and myPos[0] > halfway) or (enemy_one_loc[0] < halfway and myPos[0] < halfway)):
-                    general_enemy_dist = enemy_one_dist
-                if enemy_two_dist < general_enemy_dist and ((enemy_two_loc[0] > halfway and myPos[0] > halfway) or (enemy_two_loc[0] < halfway and myPos[0] < halfway)):
-                    general_enemy_dist = enemy_two_dist
 
                 if general_enemy_dist < when_gen_enemy_dist_matters: # CAN BE MODIFIED
                     features['generalEnemyDist'] = general_enemy_dist
@@ -508,7 +568,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
     def getWeights(self, gameState, action):
 
         return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
-                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -50, 'rev': -2}
+                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -50, 'rev': -2, 'avoidEnemyAtStart': 0.5}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
@@ -525,7 +585,7 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
         numCapsulesLeft = len(successor.getBlueCapsules())
         if self.red:
             numCapsulesDefending = len(gameState.getRedCapsules())
-            numCapsulesDefending = len(successor.getRedCapsules())
+            numCapsulesLeft = len(successor.getRedCapsules())
 
         # are we scared?
         localDefenseScaredMoves = 0
