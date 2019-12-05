@@ -19,7 +19,7 @@ import game
 from util import nearestPoint
 import itertools
 
-debug = True
+debug = False
 
 
 #################
@@ -28,8 +28,8 @@ debug = True
 
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
-    first = "DummyAgent"
-    second = "DefensiveReflexAgent"
+    first = "OffensiveReflexAgent"
+    second = "DummyAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -63,9 +63,24 @@ class ParticlesCTFAgent(CaptureAgent):
         self.initialGameState = gameState
 
     def setEnemyPosition(self, gameState, pos, enemyIndex):
-
+        foodGrid = self.getFood(gameState)
+        halfway = foodGrid.width/2
         conf = game.Configuration(pos, game.Directions.STOP)
-        gameState.data.agentStates[enemyIndex] = game.AgentState(conf, False)
+
+        #FOR THE WEIRD ERROR CHECK
+        if gameState.isOnRedTeam(self.index):
+            if pos[0] >= halfway:
+                isPacman = False
+            else:
+                isPacman = True
+        else:
+            if pos[0] >= halfway:
+                isPacman = True
+            else:
+                isPacman = False
+        gameState.data.agentStates[enemyIndex] = game.AgentState(conf, isPacman)
+
+
         return gameState
 
     def initializeParticles(self, type="both"):
@@ -178,7 +193,7 @@ class ParticlesCTFAgent(CaptureAgent):
         if debug:
             for feature in weights.keys():
                 print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
-
+            print("\n")
         return features * weights
 
     def getFeatures(self, gameState, action):
@@ -215,12 +230,13 @@ class ParticlesCTFAgent(CaptureAgent):
         bPosition = self.getEnemyPositions(self.b)
         hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
 
-        partner = self.partnerIndex(gameState)
-
-        if self.getMazeDistance(aPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.a)[aPosition] > 0.5 and False:
-            print("***** in mini max ******")
+        if self.getMazeDistance(aPosition, pacmanPosition) < 7 and self.getBeliefDistribution(self.a)[aPosition] > 0.5:
+            #print("***** in mini max ******")
             order = [self.index, self.a]
-            result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
+            if self.getMazeDistance(aPosition, pacmanPosition) < 3:
+                result = self.maxValue(hypotheticalState, order, 0, 3, -10000000, 10000000,start)
+            else:
+                result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000, start)
             # update scared moves
             if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, result[1]))):
                 # we ate a capsule!
@@ -232,10 +248,13 @@ class ParticlesCTFAgent(CaptureAgent):
             if time.time() - start > 0.1:
                 print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
             return result[1]
-        elif self.getMazeDistance(bPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.b)[bPosition] > 0.5 and False:
+        elif self.getMazeDistance(bPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.b)[bPosition] > 0.5:
             print("***** in mini max ******")
             order = [self.index, self.b]
-            result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
+            if self.getMazeDistance(bPosition, pacmanPosition) < 3:
+                result = self.maxValue(hypotheticalState, order, 0, 3, -10000000, 10000000, start)
+            else:
+                result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000, start)
             # update scared moves
             if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, result[1]))):
                 # we ate a capsule!
@@ -290,15 +309,19 @@ class ParticlesCTFAgent(CaptureAgent):
             return bestAction
 
 
-    def maxValue(self, gameState, order, index, depth, alpha, beta):
+    def maxValue(self, gameState, order, index, depth, alpha, beta, start):
         # returns a value and an action so getAction can return the best action
-        if gameState.isOver() or depth == 0:
+        if gameState.isOver() or depth == 0 or ((time.time()-start) > 0.9):
             return [self.evaluate(gameState, None), None]
         v = -10000000
         action = None
         for a in gameState.getLegalActions(order[0]):
-            newState = gameState.generateSuccessor(order[0], a)
-            newScore = self.minValue(newState, order, index + 1, depth, alpha, beta)
+            try:
+                newState = gameState.generateSuccessor(order[0], a)
+            except:
+                print("exception occured")
+                return [self.evaluate(gameState, None), None]
+            newScore = self.minValue(newState, order, index + 1, depth, alpha, beta,start)
             if newScore > v:
                 v = newScore
                 action = a
@@ -307,19 +330,23 @@ class ParticlesCTFAgent(CaptureAgent):
             alpha = max(alpha, v)
         return [v, action]
 
-    def minValue(self, gameState, order, index, depth, alpha, beta):
-        if gameState.isOver() or depth == 0:
+    def minValue(self, gameState, order, index, depth, alpha, beta, start):
+        if gameState.isOver() or depth == 0 or ((time.time()-start) > 0.9):
             return self.evaluate(gameState, None)
         v = 10000000
         for a in gameState.getLegalActions(order[index]):
-            newState = gameState.generateSuccessor(order[index], a)
+            try:
+                newState = gameState.generateSuccessor(order[index], a)
+            except:
+                print("exception occured")
+                return self.evaluate(gameState, None)
             # if pacman goes next, here is where depth is decremented
             if index + 1 >= len(order):
-                v = min(v, self.maxValue(newState, order, 0, depth - 1, alpha, beta)[0])
+                v = min(v, self.maxValue(newState, order, 0, depth - 1, alpha, beta,start)[0])
             # if another enemy goes
             else:
                 #change to max and [0] if using partner
-                v = min(v, self.minValue(newState, order, index + 1, depth, alpha, beta))
+                v = min(v, self.minValue(newState, order, index + 1, depth, alpha, beta,start))
             if v < alpha:
                 return v
             beta = min(beta, v)
