@@ -27,7 +27,7 @@ import itertools
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
     first = "OffensiveReflexAgent"
-    second = "DefensiveReflexAgent"
+    second = "DummyAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -214,55 +214,53 @@ class ParticlesCTFAgent(CaptureAgent):
 
         partner = self.partnerIndex(gameState)
 
-        values = [self.evaluate(gameState, a) for a in actions]
-        # ===== debug ========
-        # values = list()
-        # for a in actions:
-        #     print("\nAction: " + str(a))
-        #     value = self.evaluate(gameState, a)
-        #     print("resulting value: " + str(value))
-        #     values.append(value)
-        # =====================
-
-        maxValue = max(values)
-        bestActions = [a for a, v in zip(actions, values) if v == maxValue]
-        bestAction = random.choice(bestActions)
-
-        # update scared moves
-        if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
-            # we ate a capsule!
-            self.scaredMoves = self.scaredMoves + 40
-        elif self.scaredMoves != 0:
-            self.scaredMoves = self.scaredMoves-1
-        else:
-            pass
-
-        print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
-
-        return bestAction
-        """
-        if self.getMazeDistance(aPosition,pacmanPosition) < 10:
+        if self.getMazeDistance(aPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.a)[aPosition] > 0.5:
+            print("***** in mini max ******")
             order = [self.index, self.a]
             result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
-            #print("Result")
-            #print(result)
-            #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+            # update scared moves
+            if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, result[1]))):
+                # we ate a capsule!
+                self.scaredMoves = self.scaredMoves + 40
+            elif self.scaredMoves != 0:
+                self.scaredMoves = self.scaredMoves - 1
+            else:
+                pass
+            if time.time() - start > 0.1:
+                print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
             return result[1]
-        elif self.getMazeDistance(bPosition,pacmanPosition) < 10:
+        elif self.getMazeDistance(bPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.b)[bPosition] > 0.5:
+            print("***** in mini max ******")
             order = [self.index, self.b]
             result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
-            #print("Result")
-            #print(result)
-            #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+            # update scared moves
+            if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, result[1]))):
+                # we ate a capsule!
+                self.scaredMoves = self.scaredMoves + 40
+            elif self.scaredMoves != 0:
+                self.scaredMoves = self.scaredMoves - 1
+            else:
+                pass
+            if time.time() - start > 0.1:
+                print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
             return result[1]
 
         else:
             values = [self.evaluate(gameState, a) for a in actions]
             maxValue = max(values)
             bestActions = [a for a, v in zip(actions, values) if v == maxValue]
-            #print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
-            return random.choice(bestActions)
-        """
+            bestAction = random.choice(bestActions)
+            # update scared moves
+            if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
+                # we ate a capsule!
+                self.scaredMoves = self.scaredMoves + 40
+            elif self.scaredMoves != 0:
+                self.scaredMoves = self.scaredMoves - 1
+            else:
+                pass
+            #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+            return bestAction
+
 
     def maxValue(self, gameState, order, index, depth, alpha, beta):
         # returns a value and an action so getAction can return the best action
