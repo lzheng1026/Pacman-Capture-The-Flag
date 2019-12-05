@@ -19,7 +19,7 @@ import game
 from util import nearestPoint
 import itertools
 
-debug = False
+debug = True
 
 
 #################
@@ -28,8 +28,8 @@ debug = False
 
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
-    first = "OffensiveReflexAgent"
-    second = "DummyAgent"
+    first = "DummyAgent"
+    second = "DefensiveReflexAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -52,7 +52,7 @@ class ParticlesCTFAgent(CaptureAgent):
         # =====Features=============
         self.numFoodToEat = len(self.getFood(gameState).asList())-2
         self.scaredMoves = 0
-
+        self.defenseScaredMoves = 0
         CaptureAgent.registerInitialState(self, gameState)
 
     def initialize(self, gameState, legalPositions=None):
@@ -217,7 +217,7 @@ class ParticlesCTFAgent(CaptureAgent):
 
         partner = self.partnerIndex(gameState)
 
-        if self.getMazeDistance(aPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.a)[aPosition] > 0.5:
+        if self.getMazeDistance(aPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.a)[aPosition] > 0.5 and False:
             print("***** in mini max ******")
             order = [self.index, self.a]
             result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
@@ -232,7 +232,7 @@ class ParticlesCTFAgent(CaptureAgent):
             if time.time() - start > 0.1:
                 print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
             return result[1]
-        elif self.getMazeDistance(bPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.b)[bPosition] > 0.5:
+        elif self.getMazeDistance(bPosition, pacmanPosition) < 8 and self.getBeliefDistribution(self.b)[bPosition] > 0.5 and False:
             print("***** in mini max ******")
             order = [self.index, self.b]
             result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000)
@@ -249,7 +249,20 @@ class ParticlesCTFAgent(CaptureAgent):
             return result[1]
 
         else:
-            values = [self.evaluate(gameState, a) for a in actions]
+            # values = [self.evaluate(gameState, a) for a in actions]
+            if debug:
+                values = list()
+                print("=======Start=========")
+                for a in actions:
+                    print("Action: " + str(a))
+                    value = self.evaluate(gameState, a)
+                    print("\tValue: " + str(value))
+                    print("\n")
+                    values.append(value)
+                print("========End========")
+            else:
+                values = [self.evaluate(gameState, a) for a in actions]
+
             maxValue = max(values)
             bestActions = [a for a, v in zip(actions, values) if v == maxValue]
             bestAction = random.choice(bestActions)
@@ -261,6 +274,18 @@ class ParticlesCTFAgent(CaptureAgent):
                 self.scaredMoves = self.scaredMoves - 1
             else:
                 pass
+            # update defense scared moves
+            numCapsulesDefending = len(gameState.getBlueCapsules())
+            numCapsulesLeft = len(self.getSuccessor(gameState, bestAction).getBlueCapsules())
+            if self.red:
+                numCapsulesDefending = len(gameState.getRedCapsules())
+                numCapsulesDefending = len(self.getSuccessor(gameState, bestAction).getRedCapsules())
+            if numCapsulesLeft < numCapsulesDefending:
+                # enemy ate a capsule!
+                print("enemy ate a capsule!")
+                self.defenseScaredMoves += 40
+            elif self.defenseScaredMoves != 0:
+                self.defenseScaredMoves -= 1
             #print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
             return bestAction
 
@@ -445,12 +470,18 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 else:
                     features['minEnemyDist'] = when_min_enemy_dist_matters - float(min_enemy_dist)
 
+        # punish staying in the same place
+        if action == Directions.STOP: features['stop'] = 1
+        # punish just doing the reverse
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+        if action == rev: features['reverse'] = 1
+
         return features
 
     def getWeights(self, gameState, action):
 
         return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
-                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1}
+                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -50, 'rev': -2}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
@@ -463,60 +494,110 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
         myState = successor.getAgentState(self.index)
         myPos = myState.getPosition()
 
+        numCapsulesDefending = len(gameState.getBlueCapsules())
+        numCapsulesLeft = len(successor.getBlueCapsules())
+        if self.red:
+            numCapsulesDefending = len(gameState.getRedCapsules())
+            numCapsulesDefending = len(successor.getRedCapsules())
+
+        # are we scared?
+        localDefenseScaredMoves = 0
+        if numCapsulesLeft < numCapsulesDefending:
+            localDefenseScaredMoves = self.defenseScaredMoves + 40
+        elif self.defenseScaredMoves != 0:
+            localDefenseScaredMoves = self.defenseScaredMoves -1
+
         # Computes whether we're on defense (1) or offense (0)
         features['onDefense'] = 1
-        if myState.isPacman: features['onDefense'] = 0
+        if myState.isPacman: features['onDefense'] = 0 # lower by 100 points to discourage attacking enemy
 
-        # Computes distance to invaders we can see
-        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-        invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
-        features['numInvaders'] = len(invaders)
+        # Enemy
+        enemyIndices = self.getOpponents(gameState)
+        invaders = [successor.getAgentState(index) for index in enemyIndices if successor.getAgentState(index).isPacman and successor.getAgentState(index).getPosition() != None]
+
+        minEnemyDist = 0
+        genEnemyDist = 0
+        smallerGenEnemyDist = 0
         if len(invaders) > 0:
-            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
-            features['invaderDistance'] = min(dists)
+            minEnemyDist = min([self.getMazeDistance(myPos, enemy.getPosition()) for enemy in invaders])
+        else:
+            gen_dstr = [self.getBeliefDistribution(index) for index in enemyIndices]
 
+            #A
+            a_dist = 0
+            for loc, prob in gen_dstr[0].items():
+                a_dist += prob * self.getMazeDistance(loc, myPos)
+
+            #B
+            b_dist = 0
+            for loc, prob in gen_dstr[1].items():
+                b_dist += prob * self.getMazeDistance(loc, myPos)
+
+            # only pursue the closest gen enemy
+            genEnemyDist = b_dist
+            smallerGenEnemyDist = a_dist
+            if a_dist > b_dist:
+                genEnemyDist = a_dist
+                smallerGenEnemyDist = b_dist
+
+        if localDefenseScaredMoves > 0:
+            # we are scared of our enemies
+            # we are scared of all our enemies
+            if minEnemyDist > 0:
+                # very scared of the closest exact enemy
+                features['exactInvaderDistanceScared'] = minEnemyDist
+
+                # need to get genEnemyDist and smallerEnemyDist
+                # ============================================
+                gen_dstr = [self.getBeliefDistribution(index) for index in enemyIndices]
+
+                # A
+                a_dist = 0
+                for loc, prob in gen_dstr[0].items():
+                    a_dist += prob * self.getMazeDistance(loc, myPos)
+
+                # B
+                b_dist = 0
+                for loc, prob in gen_dstr[1].items():
+                    b_dist += prob * self.getMazeDistance(loc, myPos)
+
+                # only pursue the closest gen enemy
+                genEnemyDist = b_dist
+                smallerGenEnemyDist = a_dist
+                if a_dist > b_dist:
+                    genEnemyDist = a_dist
+                    smallerGenEnemyDist = b_dist
+                # ============================================
+                # otherwise it is already calcualted
+
+            features['generalInvaderDistanceScared'] = genEnemyDist
+            features['smallerGeneralInvaderDistanceScared'] = smallerGenEnemyDist
+
+
+        else:
+            # we want to chase our enemies
+            # we are only interested in chasing the closest enemy
+
+            features['numInvaders'] = len(invaders)
+
+            if minEnemyDist > 0:
+                features['exactInvaderDistance'] = minEnemyDist
+            else:
+                features['generalEnemyDistance'] = genEnemyDist
+
+
+        # punish staying in the same place
         if action == Directions.STOP: features['stop'] = 1
+        # punish just doing the reverse
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
-
-        #=======================================
-
-        # Compute expected distance to invaders using noisy distances
-        # offensive, we are actually scared of enemies
-        enemyIndices = self.getOpponents(gameState)
-        a = enemyIndices[0]
-        b = enemyIndices[1]
-
-        #expected dist
-        a_distribution = self.getBeliefDistribution(a)
-        a_dist = 0
-        for loc, prob in a_distribution.items():
-            a_dist += prob * self.getMazeDistance(loc, myPos)
-        if a_dist < 20:
-            features["enemy_a"] = 0
-        else:
-            features["enemy_a"] = a_dist
-
-        b_distribution = self.getBeliefDistribution(b)
-        b_dist = 0
-        for loc, prob in b_distribution.items():
-            b_dist += prob * self.getMazeDistance(loc, myPos)
-        if b_dist < 20:
-            features["enemy_b"] = 0
-        else:
-            features["enemy_b"] = a_dist
-
-        if features["enemy_b"]<features["enemy_a"]:
-            temp=features["enemy_a"]
-            features["enemy_a"] = features["enemy_b"]
-            features["enemy_b"] = temp
 
         return features
 
     def getWeights(self, gameState, action):
-        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2,
-                "enemy_a": -100, "enemy_b": -10}
-
+        return {'numInvaders': -1000, 'onDefense': 100, 'stop': -100, 'reverse': -2,
+                'exactInvaderDistance': -3.5, "generalEnemyDistance": -30,
+                'exactInvaderDistanceScared': -1000, 'generalInvaderDistanceScared': -200, 'smallerGeneralInvaderDistanceScared': -150}
 
 
 class DummyAgent(CaptureAgent):
