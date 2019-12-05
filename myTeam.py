@@ -19,7 +19,7 @@ import game
 from util import nearestPoint
 import itertools
 
-debug = True
+debug = False
 
 
 #################
@@ -42,7 +42,7 @@ class ParticlesCTFAgent(CaptureAgent):
     CTF Agent that models enemies using particle filtering.
     """
 
-    def registerInitialState(self, gameState, numParticles=5000):
+    def registerInitialState(self, gameState, numParticles=600):
         # =====original register initial state=======
         self.start = gameState.getAgentPosition(self.index)
 
@@ -148,9 +148,12 @@ class ParticlesCTFAgent(CaptureAgent):
                 self.particlesB = util.nSample(values, keys, self.numParticles)
 
     def elapseTime(self, gameState, enemyIndex):
+        print(self.a)
+        print(enemyIndex)
         
         if enemyIndex == self.a: 
             particles = self.particlesA
+            print("particles " + str(particles))
         else:
             particles = self.particlesB
 
@@ -158,10 +161,11 @@ class ParticlesCTFAgent(CaptureAgent):
             x,y = particles[i]
 
             # find all legal positions above or below it
-            north = nearestPoint((x, y-1))
-            south = nearestPoint((x, y+1))
-            west = nearestPoint((x+1, y))
-            east = nearestPoint((x-1, y))
+            north = (x, y-1)
+            south = (x, y+1)
+            west = (x+1, y)
+            east = (x-1, y)
+
 
             possibleLegalPositions = set(self.legalPositions)
             legalPositions = list()
@@ -170,15 +174,19 @@ class ParticlesCTFAgent(CaptureAgent):
             if south in possibleLegalPositions: legalPositions.append(south)
             if west in possibleLegalPositions: legalPositions.append(west)
             if east in possibleLegalPositions: legalPositions.append(east)
-            
+
+            print(legalPositions)
             new_position = random.choice(legalPositions)
             
             particles[i] = new_position
-            
+            print(new_position)
+
         if enemyIndex == self.a: 
             self.particlesA = particles
+
         else:
             self.particlesB = particles
+  
 
         # # loop through particles
         # for i in range(len(self.particles)):
