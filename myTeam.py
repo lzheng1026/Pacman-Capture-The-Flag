@@ -320,7 +320,15 @@ class ParticlesCTFAgent(CaptureAgent):
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
 
-    def getFeaturesFood(self, myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit):
+    def getFeaturesFoodDefenseSide(self, myPos, foodList, features):
+
+        features['foodScore'] = -len(foodList)
+
+        if len(foodList) > 0:  # This should always be True,  but better safe than sorry
+            minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
+            features['distanceToFood'] = minDistance
+
+    def getFeaturesFoodOffenseSide(self, myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit):
 
         if len(foodList) <= 2 or (numFoodEaten>=numCarryingLimit and shouldGoHome):
             # we don't care about getting more food
@@ -328,8 +336,8 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
             minToHome = self.getMazeDistance(myPos, self.start)
 
-            if minToHome == 0:
-                minToHome = 0.000001
+            if minToHome == 0: minToHome = 0.000001
+
             # add to features
             features['distanceToHome'] = -float(minToHome)
 
@@ -344,6 +352,13 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             if len(foodList) > 0:  # This should always be True,  but better safe than sorry
                 minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
                 features['distanceToFood'] = minDistance
+
+    def getFeaturesCapsulesOffenseSide(self, capsuleList, myPos, features):
+
+        if len(capsuleList) > 0:
+            minCapDistance = min([self.getMazeDistance(myPos, capsule) for capsule in capsuleList])
+            if minCapDistance < 5:  # CHANGED
+                features['distanceToCapsule'] = -minCapDistance
 
     def getFeatures(self, gameState, action):
 
@@ -360,59 +375,56 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         height = foodGrid.height
         halfway = foodGrid.width / 2
 
-        shouldGoHome = False
-        if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 3:
-            shouldGoHome = True
-
-        # food
-        self.getFeaturesFood(myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit)
-
-        # capsules
-        capsuleList = self.getCapsules(gameState)
-        if len(capsuleList) > 0:
-            minCapDistance = min([self.getMazeDistance(myPos, capsule) for capsule in capsuleList])
-            if minCapDistance < 5: # CHANGED
-                features['distanceToCapsule'] = -minCapDistance
-            else:
-                features['distanceToCapsule'] = -8
-
-        # scared time
-        localScaredMoves = 0
-        # when we eat a capsule
-        if len(capsuleList) != len(self.getCapsules(successor)):
-            # we ate a capsule!
-            localScaredMoves = self.scaredMoves + 40
-        elif self.scaredMoves != 0:
-            localScaredMoves = self.scaredMoves-1
-
-        # enemies
-
-        halfway = width/2
         when_gen_enemy_dist_matters = int(min(width, height) * 2 / 3)
         when_min_enemy_dist_matters = 10
+        min_enemy_dist = 99999999999
+        general_enemy_dist = 99999999999
 
-        if gameState.getAgentState(self.index).isPacman:
+        # set default enemies value
+        features['generalEnemyDist'] = when_gen_enemy_dist_matters
 
-            enemies = self.getOpponents(successor)
-            enemy_one_pos = successor.getAgentPosition(enemies[0])
-            enemy_two_pos = successor.getAgentPosition(enemies[1])
-            min_enemy_dist = 99999999999
+        if not gameState.getAgentState(self.index).isPacman: # on defense
 
-            # if enemies are in viewing
-            if enemy_one_pos is not None and ((enemy_one_pos[0] > halfway and myPos[0] > halfway) or (enemy_one_pos[0] < halfway and myPos[0] < halfway)):
-                min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_one_pos))
+            # food
+            self.getFeaturesFoodDefenseSide(myPos, foodList, features)
 
-            if enemy_two_pos is not None and ((enemy_two_pos[0] > halfway and myPos[0] > halfway) or (enemy_two_pos[0] < halfway and myPos[0] < halfway)):
-                min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_two_pos))
+            # set default capsule value
+            features['distanceToCapsule'] = -8
 
-            # if enemy is not in viewing
+        else: # on offense
+
+            # food
+            shouldGoHome = False
+            if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 3: shouldGoHome = True
+            self.getFeaturesFoodOffenseSide(myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit)
+
+            # capsules
+            capsuleList = self.getCapsules(gameState)
+            self.getFeaturesCapsulesOffenseSide(capsuleList, myPos, features)
+
+            # scared time
+            localScaredMoves = 0
+            # when we eat a capsule
+            if len(capsuleList) != len(self.getCapsules(successor)):
+                # we ate a capsule!
+                localScaredMoves = self.scaredMoves + 40
+            elif self.scaredMoves != 0:
+                localScaredMoves = self.scaredMoves-1
+
+            # enemies
+
+            enemies = self.getOpponents(successor) # returns list of enemy indices
+            enemy_one_pos = successor.getAgentPosition(enemies[0]) # enemy one pos
+            enemy_two_pos = successor.getAgentPosition(enemies[1]) # enemy two pos
+
+            # check if any enemy is in viewing
             if enemy_one_pos is None and enemy_two_pos is None:
-                beliefs = [self.getBeliefDistribution(enemy_index) for enemy_index in self.getOpponents(gameState)]
-                enemy_one_loc = beliefs[0].argMax()
-                enemy_two_loc = beliefs[1].argMax()
+
+                enemy_one_loc = self.getBeliefDistribution(enemies[0]).argMax()
+                enemy_two_loc = self.getBeliefDistribution(enemies[1]).argMax()
                 enemy_one_dist = self.getMazeDistance(myPos, enemy_one_loc)
                 enemy_two_dist = self.getMazeDistance(myPos, enemy_two_loc)
-                general_enemy_dist = 99999999999
+
                 if enemy_one_dist < general_enemy_dist and ((enemy_one_loc[0] > halfway and myPos[0] > halfway) or (enemy_one_loc[0] < halfway and myPos[0] < halfway)):
                     general_enemy_dist = enemy_one_dist
                 if enemy_two_dist < general_enemy_dist and ((enemy_two_loc[0] > halfway and myPos[0] > halfway) or (enemy_two_loc[0] < halfway and myPos[0] < halfway)):
@@ -420,28 +432,25 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
                 if general_enemy_dist < when_gen_enemy_dist_matters: # CAN BE MODIFIED
                     features['generalEnemyDist'] = general_enemy_dist
-                else:
-                    features['generalEnemyDist'] = when_gen_enemy_dist_matters
 
-            if localScaredMoves > 0:
-                # don't care about enemy unless really close
-                features['generalEnemyDist'] = when_gen_enemy_dist_matters
+            else:  # at least one enemy in viewing
 
-                # either eat the enemy if you are close or don't care
-                if min_enemy_dist != 99999999999 and min_enemy_dist < when_min_enemy_dist_matters:
-                    # you are close!
-                    features['eatEnemyDist'] = when_min_enemy_dist_matters-float(min_enemy_dist)
-                else:
-                    features['eatEnemyDist'] = 0
-            else:
-                # be scared if they are very close
-                if min_enemy_dist != 99999999999 and min_enemy_dist < when_min_enemy_dist_matters: # could break if maze is really small
-                    features['minEnemyDist'] = when_min_enemy_dist_matters-float(min_enemy_dist)
-                else:
-                    features['minEnemyDist'] = 0
+                if enemy_one_pos is not None and ((enemy_one_pos[0] > halfway and myPos[0] > halfway) or (
+                        enemy_one_pos[0] < halfway and myPos[0] < halfway)):
+                    min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_one_pos))
+                if enemy_two_pos is not None and ((enemy_two_pos[0] > halfway and myPos[0] > halfway) or (
+                        enemy_two_pos[0] < halfway and myPos[0] < halfway)):
+                    min_enemy_dist = min(min_enemy_dist, self.getMazeDistance(myPos, enemy_two_pos))
 
-        else:
-            features['generalEnemyDist'] = 20
+            # you only do stuff with min_enemy_dist if it is actually close
+            if min_enemy_dist < when_min_enemy_dist_matters:
+                # eat ghost if you can
+                if localScaredMoves > 0:
+                    features['eatEnemyDist'] = when_min_enemy_dist_matters - float(min_enemy_dist)
+                    # min dist feature should be 0
+                # otherwise have min dist feature
+                else:
+                    features['minEnemyDist'] = when_min_enemy_dist_matters - float(min_enemy_dist)
 
         return features
 
@@ -518,46 +527,13 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
 
 
 class DummyAgent(CaptureAgent):
-  """
-  A Dummy agent to serve as an example of the necessary agent structure.
-  You should look at baselineTeam.py for more details about how to
-  create an agent as this is the bare minimum.
-  """
 
   def registerInitialState(self, gameState):
-    """
-    This method handles the initial setup of the
-    agent to populate useful fields (such as what team
-    we're on).
 
-    A distanceCalculator instance caches the maze distances
-    between each pair of positions, so your agents can use:
-    self.distancer.getDistance(p1, p2)
-
-    IMPORTANT: This method may run for at most 15 seconds.
-    """
-
-    '''
-    Make sure you do not delete the following line. If you would like to
-    use Manhattan distances instead of maze distances in order to save
-    on initialization time, please take a look at
-    CaptureAgent.registerInitialState in captureAgents.py.
-    '''
     CaptureAgent.registerInitialState(self, gameState)
 
-    '''
-    Your initialization code goes here, if you need any.
-    '''
-
-
   def chooseAction(self, gameState):
-    """
-    Picks among actions randomly.
-    """
-    actions = gameState.getLegalActions(self.index)
 
-    '''
-    You should change this in your own agent.
-    '''
+    actions = gameState.getLegalActions(self.index)
 
     return random.choice(actions)
