@@ -30,7 +30,7 @@ debug_capsule = True
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
     first = "OffensiveReflexAgent"
-    second = "DefensiveReflexAgent"
+    second = "DummyAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -63,6 +63,9 @@ class ParticlesCTFAgent(CaptureAgent):
         self.width = self.getFood(gameState).width
         self.height = self.getFood(gameState).height
         self.halfway = self.width/2
+        self.offenseGoToFurthestFood = True
+        self.offenseGoToFurthestFoodPosition = None
+        print("register initial state")
 
     def initialize(self, gameState, legalPositions=None):
         self.legalPositions = gameState.getWalls().asList(False)
@@ -157,12 +160,9 @@ class ParticlesCTFAgent(CaptureAgent):
                 self.particlesB = util.nSample(values, keys, self.numParticles)
 
     def elapseTime(self, gameState, enemyIndex):
-        print(self.a)
-        print(enemyIndex)
         
         if enemyIndex == self.a: 
             particles = self.particlesA
-            print("particles " + str(particles))
         else:
             particles = self.particlesB
 
@@ -184,23 +184,15 @@ class ParticlesCTFAgent(CaptureAgent):
             if west in possibleLegalPositions: legalPositions.append(west)
             if east in possibleLegalPositions: legalPositions.append(east)
 
-            print(legalPositions)
             new_position = random.choice(legalPositions)
             
             particles[i] = new_position
-            print(new_position)
 
         if enemyIndex == self.a: 
             self.particlesA = particles
 
         else:
             self.particlesB = particles
-  
-
-        # # loop through particles
-        # for i in range(len(self.particles)):
-        #     newPosDist = self.getPositionDistribution(self.setGhostPosition(gameState, self.particles[i])) # transition prob
-        #     self.particles[i] = util.sample(newPosDist)
 
 
     def getBeliefDistribution(self, enemyIndex):
@@ -273,6 +265,9 @@ class ParticlesCTFAgent(CaptureAgent):
         start = time.time()
         pacmanPosition = gameState.getAgentPosition(self.index)
 
+        if pacmanPosition == self.start:
+            self.offenseGoToFurthestFood = True
+
         # elapse time
         self.elapseTime(gameState, self.a)
         self.elapseTime(gameState, self.b)
@@ -332,6 +327,15 @@ class ParticlesCTFAgent(CaptureAgent):
 
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
+
+    def changeIncentive(self, bool):
+
+        print("changing")
+
+        if bool:
+            self.offenseGoToFurthestFood = bool
+        else:
+            self.offenseGoToFurthestFood = False
 
     def getFeaturesFoodDefenseSide(self, myPos, foodList, features):
 
@@ -393,6 +397,46 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         min_enemy_dist = 99999999999
         general_enemy_dist = 99999999999
 
+        # condition for furthest food
+        if self.offenseGoToFurthestFoodPosition is None:
+            if self.red:
+                homeFoodList = successor.getRedFood().asList()
+            else:
+                homeFoodList = successor.getBlueFood().asList()
+            maxfood = None
+            maxfooddist = 0
+            for food_pos in homeFoodList:
+                if self.getMazeDistance(myPos, food_pos) > maxfooddist:
+                    maxfooddist = self.getMazeDistance(myPos, food_pos)
+                    maxfood = food_pos
+            self.debugDraw(maxfood, (255, 255, 255), False)
+            # maxFoodDist = max([self.getMazeDistance(myPos, food_pos) for food_pos in homeFoodList])
+            self.offenseGoToFurthestFoodPosition = maxfood
+        else:
+            maxfooddist = self.getMazeDistance(myPos, self.offenseGoToFurthestFoodPosition)
+
+        if successor.getAgentState(self.index).isPacman or ((abs(myPos[0]-self.offenseGoToFurthestFoodPosition[0]) < 5 and not successor.getAgentState(self.index).isPacman)and maxfooddist < 5):
+            # print("situation 1")
+            # print(str(successor.getAgentState(self.index).isPacman))
+            # print(str(abs(myPos[0]-self.offenseGoToFurthestFoodPosition[0])))
+            # print(str(maxfooddist < 5))
+            self.changeIncentive(False)
+            # import pdb;
+            # pdb.set_trace()
+        # elif self.getMazeDistance(myPos, self.start) != 0 and self.getMazeDistance(myPos, self.start) < 3: #==1?
+        #     print("situation 2")
+        #     print(str(myPos))
+        #     self.changeIncentive(True)
+            # import pdb;
+            # pdb.set_trace()
+        if maxfooddist == 0:
+            maxfooddist = 0.0001
+        # distance to furthest food on our side
+        if self.offenseGoToFurthestFood:
+            features['furthestFoodDist'] = maxfooddist
+            print("incentivized to go weird " + str(maxfooddist))
+            return features
+
         # set default enemies value
         features['generalEnemyDist'] = when_gen_enemy_dist_matters
 
@@ -403,7 +447,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
             # set default capsule value
             features['distanceToCapsule'] = -8
-            
+
             # leave enemy
             # ?
 
@@ -411,7 +455,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
             # food
             shouldGoHome = False
-            if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 3: shouldGoHome = True
+            if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 4: shouldGoHome = True
+            if shouldGoHome:
+                print("should go home" + str(shouldGoHome))
             self.getFeaturesFoodOffenseSide(myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit)
 
             # capsules
@@ -494,7 +540,8 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
     def getWeights(self, gameState, action):
 
         return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
-                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -75, 'rev': -50}
+                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -75, 'rev': -50,
+                'furthestFoodDist': -20000}
     
     def chooseAction(self, gameState):
 
@@ -550,7 +597,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         else:
             # values = [self.evaluate(gameState, a) for a in actions]
-            if debug:
+            if debug and False:
                 values = list()
                 print("=======Start=========")
                 for a in actions:
@@ -583,13 +630,12 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             numCapsulesDefending = len(self.getSuccessor(gameState,bestAction).getRedCapsules())
         if numCapsulesLeft < numCapsulesDefending:
             # enemy ate a capsule!
-            print("enemy ate a capsule!")
             self.defenseScaredMoves += 40
         elif self.defenseScaredMoves != 0:
             self.defenseScaredMoves -= 1
 
-        if time.time() - start > 0.1:
-            print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+        # if time.time() - start > 0.1:
+        #     print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
         if bestAction == 'Stop':
             self.stopped += 1
@@ -604,8 +650,8 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             else:
                 self.stopped = 0
 
-        print("self.stopped status every time we choose an action " + str(self.stopped))
-        print("bestaction " + str(bestAction))
+        # print("self.stopped status every time we choose an action " + str(self.stopped))
+        # print("bestaction " + str(bestAction))
 
         if gameState.getAgentPosition(self.index) == self.start:
             # reset everything
