@@ -20,7 +20,7 @@ from util import nearestPoint
 import itertools
 
 debug = False
-debug_capsule = True
+debug_capsule = False
 
 
 #################
@@ -63,6 +63,9 @@ class ParticlesCTFAgent(CaptureAgent):
         self.width = self.getFood(gameState).width
         self.height = self.getFood(gameState).height
         self.halfway = self.width/2
+        self.reverse = 0
+        self.flank = False
+        self.numRevSteps = 0
 
     def initialize(self, gameState, legalPositions=None):
         self.legalPositions = gameState.getWalls().asList(False)
@@ -157,12 +160,9 @@ class ParticlesCTFAgent(CaptureAgent):
                 self.particlesB = util.nSample(values, keys, self.numParticles)
 
     def elapseTime(self, gameState, enemyIndex):
-        print(self.a)
-        print(enemyIndex)
         
         if enemyIndex == self.a: 
             particles = self.particlesA
-            print("particles " + str(particles))
         else:
             particles = self.particlesB
 
@@ -184,11 +184,9 @@ class ParticlesCTFAgent(CaptureAgent):
             if west in possibleLegalPositions: legalPositions.append(west)
             if east in possibleLegalPositions: legalPositions.append(east)
 
-            print(legalPositions)
             new_position = random.choice(legalPositions)
             
             particles[i] = new_position
-            print(new_position)
 
         if enemyIndex == self.a: 
             self.particlesA = particles
@@ -325,8 +323,8 @@ class ParticlesCTFAgent(CaptureAgent):
         elif self.defenseScaredMoves != 0:
             self.defenseScaredMoves -= 1
 
-        if time.time() - start > 0.1:
-            print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+        # if time.time() - start > 0.1:
+        #     print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
         return bestAction
 
@@ -488,13 +486,26 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             # add to features
             features['distanceToHome'] = -float(minToHome)
             print("we are stuck!")
+        elif self.flank and not successor.getAgentState(self.index).isPacman:
+            minToHome = self.getMazeDistance(myPos, self.start)
+            if minToHome == 0: minToHome = 0.000001
+            # add to features
+            features['distanceToHome'] = -float(minToHome)
+            print("we are flanking!")
+        elif self.flank and successor.getAgentState(self.index).isPacman:
+            x,y = self.start
+            minToOtherHalf = self.getMazeDistance(myPos, (x,y/2))
+            if myPos == self.start: minToOtherHalf = 0.000001
+            features['minToOtherHalf'] = -float(minToOtherHalf)
+            print("we are flanking!")
+
 
         return features
 
     def getWeights(self, gameState, action):
 
         return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
-                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -75, 'rev': -50}
+                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -75, 'rev': -100, 'minToOtherHalf': 1000}
     
     def chooseAction(self, gameState):
 
@@ -601,17 +612,39 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             elif self.stuck and self.numStuckSteps>=6:
                 self.stuck = False
                 self.stopped = 0
+                self.numStuckSteps = 0
             else:
                 self.stopped = 0
 
-        print("self.stopped status every time we choose an action " + str(self.stopped))
-        print("bestaction " + str(bestAction))
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+        if bestAction == rev:
+            self.reverse += 1
+            if self.reverse >= 4:
+                self.flank = True
+        else:
+            if self.flank and self.numRevSteps<7:
+                print("num steps is " + str(self.numRevSteps))
+                self.numRevSteps += 1
+            elif self.flank and self.numRevSteps >= 7:
+                self.flank = False
+                self.reverse = 0
+                self.numRevSteps = 0
+            else:
+                self.reverse = 0
+
+
+
+        #print("self.stopped status every time we choose an action " + str(self.stopped))
+        #print("bestaction " + str(bestAction))
 
         if gameState.getAgentPosition(self.index) == self.start:
             # reset everything
             self.stuck = False
             self.stopped = 0
             self.numStuckSteps = 0
+            self.flank = 0
+            self.reverse = 0
+            self.numRevSteps = 0
 
         return bestAction
 
@@ -628,6 +661,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             except:
                 print("exception occured")
                 return [self.evaluate(gameState, None), None]
+            if newState.getAgentPosition(self.index) == newState.getAgentPosition(order[1]) and self.scaredMoves > 0:
+                action = a
+                break
             newScore = self.minValue(newState, order, index + 1, depth, alpha, beta,start)
             if newScore > v:
                 v = newScore
