@@ -30,7 +30,7 @@ debug_capsule = True
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
     first = "OffensiveReflexAgent"
-    second = "DefensiveReflexAgent"
+    second = "DummyAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -43,7 +43,7 @@ class ParticlesCTFAgent(CaptureAgent):
     CTF Agent that models enemies using particle filtering.
     """
 
-    def registerInitialState(self, gameState, numParticles=1000):
+    def registerInitialState(self, gameState, numParticles=600):
         # =====original register initial state=======
         self.start = gameState.getAgentPosition(self.index)
 
@@ -70,7 +70,6 @@ class ParticlesCTFAgent(CaptureAgent):
         foodGrid = self.getFood(gameState)
         halfway = foodGrid.width/2
         conf = game.Configuration(pos, game.Directions.STOP)
-
 
         #FOR THE WEIRD ERROR CHECK
         if gameState.isOnRedTeam(self.index):
@@ -152,6 +151,53 @@ class ParticlesCTFAgent(CaptureAgent):
             else:
                 self.particlesB = util.nSample(values, keys, self.numParticles)
 
+    def elapseTime(self, gameState, enemyIndex):
+        print(self.a)
+        print(enemyIndex)
+        
+        if enemyIndex == self.a: 
+            particles = self.particlesA
+            print("particles " + str(particles))
+        else:
+            particles = self.particlesB
+
+        for i in range(self.numParticles):
+            x,y = particles[i]
+
+            # find all legal positions above or below it
+            north = (x, y-1)
+            south = (x, y+1)
+            west = (x+1, y)
+            east = (x-1, y)
+
+
+            possibleLegalPositions = set(self.legalPositions)
+            legalPositions = list()
+
+            if north in possibleLegalPositions: legalPositions.append(north)
+            if south in possibleLegalPositions: legalPositions.append(south)
+            if west in possibleLegalPositions: legalPositions.append(west)
+            if east in possibleLegalPositions: legalPositions.append(east)
+
+            print(legalPositions)
+            new_position = random.choice(legalPositions)
+            
+            particles[i] = new_position
+            print(new_position)
+
+        if enemyIndex == self.a: 
+            self.particlesA = particles
+
+        else:
+            self.particlesB = particles
+  
+
+        # # loop through particles
+        # for i in range(len(self.particles)):
+        #     newPosDist = self.getPositionDistribution(self.setGhostPosition(gameState, self.particles[i])) # transition prob
+        #     self.particles[i] = util.sample(newPosDist)
+
+
     def getBeliefDistribution(self, enemyIndex):
         allPossible = util.Counter()
         if enemyIndex == self.a:
@@ -220,10 +266,19 @@ class ParticlesCTFAgent(CaptureAgent):
     def chooseAction(self, gameState):
 
         start = time.time()
+        pacmanPosition = gameState.getAgentPosition(self.index)
+
+        # elapse time
+        self.elapseTime(gameState, self.a)
+        self.elapseTime(gameState, self.b)
+        # ----------------elapse
+        
         self.observeState(gameState, self.a)
         self.observeState(gameState, self.b)
-        #self.displayDistributionsOverPositions(beliefs)
-
+        
+        beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
+        self.displayDistributionsOverPositions(beliefs)
+        
         actions = gameState.getLegalActions(self.index)
 
         # values = [self.evaluate(gameState, a) for a in actions]
@@ -269,7 +324,6 @@ class ParticlesCTFAgent(CaptureAgent):
             print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
         return bestAction
-
 
 
 class OffensiveReflexAgent(ParticlesCTFAgent):
@@ -344,12 +398,15 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
             # set default capsule value
             features['distanceToCapsule'] = -8
+            
+            # leave enemy
+            # ?
 
         else: # on offense
 
             # food
             shouldGoHome = False
-            if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 4: shouldGoHome = True
+            if features['minEnemyDist'] > 0 or abs(myPos[0] - halfway) < 3: shouldGoHome = True
             self.getFeaturesFoodOffenseSide(myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit)
 
             # capsules
@@ -415,7 +472,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         # punish staying in the same place
         if action == Directions.STOP: features['stop'] = 1
-        #if self.stuck: features['stop'] = 10
         # punish just doing the reverse
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
@@ -434,6 +490,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
                 'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -75, 'rev': -50}
+    
     def chooseAction(self, gameState):
 
         start = time.time()
@@ -587,6 +644,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 return v
             beta = min(beta, v)
         return v
+                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -50, 'rev': -2, 'avoidEnemyAtStart': 0.5}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
@@ -602,8 +660,8 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
         numCapsulesDefending = len(gameState.getBlueCapsules())
         numCapsulesLeft = len(successor.getBlueCapsules())
         if self.red:
-            numCapsulesLeft = len(gameState.getRedCapsules())
-            numCapsulesDefending = len(successor.getRedCapsules())
+            numCapsulesDefending = len(gameState.getRedCapsules())
+            numCapsulesLeft = len(successor.getRedCapsules())
 
         # are we scared?
         localDefenseScaredMoves = 0
@@ -620,11 +678,12 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
         enemyIndices = self.getOpponents(gameState)
         invaders = [successor.getAgentState(index) for index in enemyIndices if successor.getAgentState(index).isPacman and successor.getAgentState(index).getPosition() != None]
 
-        if len(invaders)==2:
-            for i in invaders:
-                print(i)
-                print(i.isPacman)
-            input()
+        # if len(invaders)==2:
+        #     for i in invaders:
+        #         print(i)
+        #         print(i.isPacman)
+        #     input()
+            
         minEnemyDist = 0
         genEnemyDist = 0
         smallerGenEnemyDist = 0
@@ -698,7 +757,6 @@ class DefensiveReflexAgent(ParticlesCTFAgent):
 
         # punish staying in the same place
         if action == Directions.STOP: features['stop'] = 1
-        #if self.stuck: features['stop'] = 10
         # punish just doing the reverse
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1

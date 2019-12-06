@@ -21,11 +21,16 @@
 # For more info, see http://inst.eecs.berkeley.edu/~cs188/sp09/pacman.html
 
 from captureAgents import CaptureAgent
+import random, time, util
+from game import Directions
+import game
+from captureAgents import CaptureAgent
 import distanceCalculator
 import random, time, util, sys
 from game import Directions
 import game
 from util import nearestPoint
+from capture import SIGHT_RANGE
 
 #################
 # Team creation #
@@ -35,7 +40,7 @@ debug = False
 debug_capsule = True
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first = 'DefensiveReflexAgent', second = 'OffensiveReflexAgent'): #first = 'DefensiveReflexAgent', second = 'OffensiveReflexAgent'
+               first='Defense', second='Offense'): #first = 'DefensiveReflexAgent', second = 'OffensiveReflexAgent'
   """
   This function should return a list of two agents that will form the
   team, initialized using firstIndex and secondIndex as their agent
@@ -56,237 +61,244 @@ def createTeam(firstIndex, secondIndex, isRed,
 # Agents #
 ##########
 
-class ParticlesCTFAgent(CaptureAgent):
-    """
-    CTF Agent that models enemies using particle filtering.
-    """
-
-    def registerInitialState(self, gameState, numParticles=1000):
-        # =====original register initial state=======
-        self.start = gameState.getAgentPosition(self.index)
-
-        # =====ParticleCTFAgent init================
-        self.numParticles = numParticles
-        self.initialize(gameState)
-        # =====Features=============
-        self.numFoodToEat = len(self.getFood(gameState).asList())-2
-        self.scaredMoves = 0
-        self.defenseScaredMoves = 0
-        CaptureAgent.registerInitialState(self, gameState)
-        self.stopped = 0
-        self.stuck = False
-        self.numStuckSteps = 0
-
-    def initialize(self, gameState, legalPositions=None):
-        self.legalPositions = gameState.getWalls().asList(False)
-        self.initializeParticles()
-        self.a, self.b = self.getOpponents(gameState)
-        # for fail
-        self.initialGameState = gameState
-
-    def setEnemyPosition(self, gameState, pos, enemyIndex):
-        foodGrid = self.getFood(gameState)
-        halfway = foodGrid.width/2
-        conf = game.Configuration(pos, game.Directions.STOP)
 
 
-        #FOR THE WEIRD ERROR CHECK
-        if gameState.isOnRedTeam(self.index):
-            if pos[0] >= halfway:
-                isPacman = False
-            else:
-                isPacman = True
-        else:
-            if pos[0] >= halfway:
-                isPacman = True
-            else:
-                isPacman = False
-        gameState.data.agentStates[enemyIndex] = game.AgentState(conf, isPacman)
 
 
-        return gameState
 
-    def initializeParticles(self, type="both"):
 
-        positions = self.legalPositions
-        atEach = self.numParticles / len(positions)  # self.numParticles
-        remainder = self.numParticles % len(positions)
-        # don't throw out a particle
-        particles = []
-        # populate particles
-        for pos in positions:
-            for num in range(atEach):
-                particles.append(pos)
-        # now populate the remainders
-        for index in range(remainder):
-            particles.append(positions[index])
-        # save to self.particles
-        if type == 'both':
-            self.particlesA = particles
-            self.particlesB = particles
-        elif type == self.a:
-            self.particlesA = particles
-        elif type == self.b:
-            self.particlesB = particles
-        return particles
 
-    def observeState(self, gameState, enemyIndex):
-
-        pacmanPosition = gameState.getAgentPosition(self.index)
-
-        if enemyIndex == self.a:
-            noisyDistance = gameState.getAgentDistances()[self.a]
-            beliefDist = self.getBeliefDistribution(self.a)
-            particles = self.particlesA
-            if gameState.getAgentPosition(self.a) != None:
-                self.particlesA = [gameState.getAgentPosition(self.a)] * self.numParticles
-                return
-        else:
-            noisyDistance = gameState.getAgentDistances()[self.b]
-            beliefDist = self.getBeliefDistribution(self.b)
-            particles = self.particlesB
-            if gameState.getAgentPosition(self.b) != None:
-                self.particlesB = [gameState.getAgentPosition(self.b)] * self.numParticles
-                return
-
-        W = util.Counter()
-
-        for p in particles:
-            trueDistance = self.getMazeDistance(p, pacmanPosition)
-            W[p] = beliefDist[p] * gameState.getDistanceProb(trueDistance, noisyDistance)
-
-        # we resample after we get weights for each ghost
-        if W.totalCount() == 0:
-            particles = self.initializeParticles(enemyIndex)
-        else:
-            values = []
-            keys = []
-            for key, value in W.items():
-                keys.append(key)
-                values.append(value)
-
-            if enemyIndex == self.a:
-                self.particlesA = util.nSample(values, keys, self.numParticles)
-            else:
-                self.particlesB = util.nSample(values, keys, self.numParticles)
-
-    def getBeliefDistribution(self, enemyIndex):
-        allPossible = util.Counter()
-        if enemyIndex == self.a:
-            for pos in self.particlesA:
-                allPossible[pos] += 1
-        else:
-            for pos in self.particlesB:
-                allPossible[pos] += 1
-        allPossible.normalize()
-        return allPossible
-
-    def getEnemyPositions(self, enemyIndex):
-        """
-        Uses getBeliefDistribution to predict where the two enemies are most likely to be
-        :return: two tuples of enemy positions
-        """
-        return self.getBeliefDistribution(enemyIndex).argMax()
-
-    def getSuccessor(self, gameState, action):
-        """
-        Finds the next successor which is a grid position (location tuple).
-        """
-        debug = False
-        if action is None:
-            successor = gameState
-        else:
-            successor = gameState.generateSuccessor(self.index, action)
-        pos = successor.getAgentState(self.index).getPosition()
-
-        if pos != nearestPoint(pos):
-            # Only half a grid position was covered
-            return successor.generateSuccessor(self.index, action)
-        else:
-            return successor
-
-    def evaluate(self, gameState, action):
-        """
-        Computes a linear combination of features and feature weights
-        """
-        features = self.getFeatures(gameState, action)
-        weights = self.getWeights(gameState, action)
-
-        # debug
-        if debug:
-            for feature in weights.keys():
-                print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
-            print("\n")
-        return features * weights
-
-    def getFeatures(self, gameState, action):
-        """
-        Returns a counter of features for the state
-        """
-        features = util.Counter()
-        successor = self.getSuccessor(gameState, action)
-        features['successorScore'] = self.getScore(successor)
-        return features
-
-    def getWeights(self, gameState, action):
-        """
-        Normally, weights do not depend on the gamestate.  They can be either
-        a counter or a dictionary.
-        """
-        return {'successorScore': 1.0}
-
-    def chooseAction(self, gameState):
-
-        start = time.time()
-        self.observeState(gameState, self.a)
-        self.observeState(gameState, self.b)
-        #self.displayDistributionsOverPositions(beliefs)
-
-        actions = gameState.getLegalActions(self.index)
-
-        # values = [self.evaluate(gameState, a) for a in actions]
-        if debug:
-            values = list()
-            print("=======Start=========")
-            for a in actions:
-                print("Action: " + str(a))
-                value = self.evaluate(gameState, a)
-                print("\tValue: " + str(value))
-                print("\n")
-                values.append(value)
-            print("========End========")
-        else:
-            values = [self.evaluate(gameState, a) for a in actions]
-
-        maxValue = max(values)
-        bestActions = [a for a, v in zip(actions, values) if v == maxValue]
-        bestAction = random.choice(bestActions)
-
-        # update scared moves
-        if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
-            # we ate a capsule!
-            self.scaredMoves = self.scaredMoves + 40
-        elif self.scaredMoves != 0:
-            self.scaredMoves = self.scaredMoves - 1
-        else:
-            pass
-        # update defense scared moves
-        numCapsulesDefending = len(gameState.getBlueCapsules())
-        numCapsulesLeft = len(self.getSuccessor(gameState, bestAction).getBlueCapsules())
-        if self.red:
-            numCapsulesLeft = len(gameState.getRedCapsules())
-            numCapsulesDefending = len(self.getSuccessor(gameState,bestAction).getRedCapsules())
-        if numCapsulesLeft < numCapsulesDefending:
-            # enemy ate a capsule!
-            print("enemy ate a capsule!")
-            self.defenseScaredMoves += 40
-        elif self.defenseScaredMoves != 0:
-            self.defenseScaredMoves -= 1
-
-        if time.time() - start > 0.1:
-            print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
-
-        return bestAction
+# class ParticlesCTFAgent(CaptureAgent):
+#     """
+#     CTF Agent that models enemies using particle filtering.
+#     """
+#
+#     def registerInitialState(self, gameState, numParticles=1000):
+#         # =====original register initial state=======
+#         self.start = gameState.getAgentPosition(self.index)
+#
+#         # =====ParticleCTFAgent init================
+#         self.numParticles = numParticles
+#         self.initialize(gameState)
+#         # =====Features=============
+#         self.numFoodToEat = len(self.getFood(gameState).asList())-2
+#         self.scaredMoves = 0
+#         self.defenseScaredMoves = 0
+#         CaptureAgent.registerInitialState(self, gameState)
+#         self.stopped = 0
+#         self.stuck = False
+#         self.numStuckSteps = 0
+#
+#     def initialize(self, gameState, legalPositions=None):
+#         self.legalPositions = gameState.getWalls().asList(False)
+#         self.initializeParticles()
+#         self.a, self.b = self.getOpponents(gameState)
+#         # for fail
+#         self.initialGameState = gameState
+#
+#     def setEnemyPosition(self, gameState, pos, enemyIndex):
+#         foodGrid = self.getFood(gameState)
+#         halfway = foodGrid.width/2
+#         conf = game.Configuration(pos, game.Directions.STOP)
+#
+#
+#         #FOR THE WEIRD ERROR CHECK
+#         if gameState.isOnRedTeam(self.index):
+#             if pos[0] >= halfway:
+#                 isPacman = False
+#             else:
+#                 isPacman = True
+#         else:
+#             if pos[0] >= halfway:
+#                 isPacman = True
+#             else:
+#                 isPacman = False
+#         gameState.data.agentStates[enemyIndex] = game.AgentState(conf, isPacman)
+#
+#
+#         return gameState
+#
+#     def initializeParticles(self, type="both"):
+#
+#         positions = self.legalPositions
+#         atEach = self.numParticles / len(positions)  # self.numParticles
+#         remainder = self.numParticles % len(positions)
+#         # don't throw out a particle
+#         particles = []
+#         # populate particles
+#         for pos in positions:
+#             for num in range(atEach):
+#                 particles.append(pos)
+#         # now populate the remainders
+#         for index in range(remainder):
+#             particles.append(positions[index])
+#         # save to self.particles
+#         if type == 'both':
+#             self.particlesA = particles
+#             self.particlesB = particles
+#         elif type == self.a:
+#             self.particlesA = particles
+#         elif type == self.b:
+#             self.particlesB = particles
+#         return particles
+#
+#     def observeState(self, gameState, enemyIndex):
+#
+#         pacmanPosition = gameState.getAgentPosition(self.index)
+#
+#         if enemyIndex == self.a:
+#             noisyDistance = gameState.getAgentDistances()[self.a]
+#             beliefDist = self.getBeliefDistribution(self.a)
+#             particles = self.particlesA
+#             if gameState.getAgentPosition(self.a) != None:
+#                 self.particlesA = [gameState.getAgentPosition(self.a)] * self.numParticles
+#                 return
+#         else:
+#             noisyDistance = gameState.getAgentDistances()[self.b]
+#             beliefDist = self.getBeliefDistribution(self.b)
+#             particles = self.particlesB
+#             if gameState.getAgentPosition(self.b) != None:
+#                 self.particlesB = [gameState.getAgentPosition(self.b)] * self.numParticles
+#                 return
+#
+#         W = util.Counter()
+#
+#         for p in particles:
+#             trueDistance = self.getMazeDistance(p, pacmanPosition)
+#             W[p] = beliefDist[p] * gameState.getDistanceProb(trueDistance, noisyDistance)
+#
+#         # we resample after we get weights for each ghost
+#         if W.totalCount() == 0:
+#             particles = self.initializeParticles(enemyIndex)
+#         else:
+#             values = []
+#             keys = []
+#             for key, value in W.items():
+#                 keys.append(key)
+#                 values.append(value)
+#
+#             if enemyIndex == self.a:
+#                 self.particlesA = util.nSample(values, keys, self.numParticles)
+#             else:
+#                 self.particlesB = util.nSample(values, keys, self.numParticles)
+#
+#     def getBeliefDistribution(self, enemyIndex):
+#         allPossible = util.Counter()
+#         if enemyIndex == self.a:
+#             for pos in self.particlesA:
+#                 allPossible[pos] += 1
+#         else:
+#             for pos in self.particlesB:
+#                 allPossible[pos] += 1
+#         allPossible.normalize()
+#         return allPossible
+#
+#     def getEnemyPositions(self, enemyIndex):
+#         """
+#         Uses getBeliefDistribution to predict where the two enemies are most likely to be
+#         :return: two tuples of enemy positions
+#         """
+#         return self.getBeliefDistribution(enemyIndex).argMax()
+#
+#     def getSuccessor(self, gameState, action):
+#         """
+#         Finds the next successor which is a grid position (location tuple).
+#         """
+#         debug = False
+#         if action is None:
+#             successor = gameState
+#         else:
+#             successor = gameState.generateSuccessor(self.index, action)
+#         pos = successor.getAgentState(self.index).getPosition()
+#
+#         if pos != nearestPoint(pos):
+#             # Only half a grid position was covered
+#             return successor.generateSuccessor(self.index, action)
+#         else:
+#             return successor
+#
+#     def evaluate(self, gameState, action):
+#         """
+#         Computes a linear combination of features and feature weights
+#         """
+#         features = self.getFeatures(gameState, action)
+#         weights = self.getWeights(gameState, action)
+#
+#         # debug
+#         if debug:
+#             for feature in weights.keys():
+#                 print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
+#             print("\n")
+#         return features * weights
+#
+#     def getFeatures(self, gameState, action):
+#         """
+#         Returns a counter of features for the state
+#         """
+#         features = util.Counter()
+#         successor = self.getSuccessor(gameState, action)
+#         features['successorScore'] = self.getScore(successor)
+#         return features
+#
+#     def getWeights(self, gameState, action):
+#         """
+#         Normally, weights do not depend on the gamestate.  They can be either
+#         a counter or a dictionary.
+#         """
+#         return {'successorScore': 1.0}
+#
+#     def chooseAction(self, gameState):
+#
+#         start = time.time()
+#         self.observeState(gameState, self.a)
+#         self.observeState(gameState, self.b)
+#         #self.displayDistributionsOverPositions(beliefs)
+#
+#         actions = gameState.getLegalActions(self.index)
+#
+#         # values = [self.evaluate(gameState, a) for a in actions]
+#         if debug:
+#             values = list()
+#             print("=======Start=========")
+#             for a in actions:
+#                 print("Action: " + str(a))
+#                 value = self.evaluate(gameState, a)
+#                 print("\tValue: " + str(value))
+#                 print("\n")
+#                 values.append(value)
+#             print("========End========")
+#         else:
+#             values = [self.evaluate(gameState, a) for a in actions]
+#
+#         maxValue = max(values)
+#         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+#         bestAction = random.choice(bestActions)
+#
+#         # update scared moves
+#         if len(self.getCapsules(gameState)) != len(self.getCapsules(self.getSuccessor(gameState, bestAction))):
+#             # we ate a capsule!
+#             self.scaredMoves = self.scaredMoves + 40
+#         elif self.scaredMoves != 0:
+#             self.scaredMoves = self.scaredMoves - 1
+#         else:
+#             pass
+#         # update defense scared moves
+#         numCapsulesDefending = len(gameState.getBlueCapsules())
+#         numCapsulesLeft = len(self.getSuccessor(gameState, bestAction).getBlueCapsules())
+#         if self.red:
+#             numCapsulesLeft = len(gameState.getRedCapsules())
+#             numCapsulesDefending = len(self.getSuccessor(gameState,bestAction).getRedCapsules())
+#         if numCapsulesLeft < numCapsulesDefending:
+#             # enemy ate a capsule!
+#             print("enemy ate a capsule!")
+#             self.defenseScaredMoves += 40
+#         elif self.defenseScaredMoves != 0:
+#             self.defenseScaredMoves -= 1
+#
+#         if time.time() - start > 0.1:
+#             print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+#
+#         return bestAction
 
 
 
