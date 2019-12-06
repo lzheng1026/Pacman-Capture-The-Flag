@@ -37,10 +37,10 @@ from capture import SIGHT_RANGE
 #################
 
 debug = False
-debug_capsule = True
+debug_capsule = False
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first='Defense', second='Offense'): #first = 'DefensiveReflexAgent', second = 'OffensiveReflexAgent'
+               first='DefensiveReflexAgent', second='OffensiveReflexAgent'): #first = 'DefensiveReflexAgent', second = 'OffensiveReflexAgent'
   """
   This function should return a list of two agents that will form the
   team, initialized using firstIndex and secondIndex as their agent
@@ -556,8 +556,8 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             else:
                 self.stopped = 0
 
-        print("self.stopped status every time we choose an action " + str(self.stopped))
-        print("bestaction " + str(bestAction))
+        # print("self.stopped status every time we choose an action " + str(self.stopped))
+        # print("bestaction " + str(bestAction))
 
         if gameState.getAgentPosition(self.index) == self.start:
             # reset everything
