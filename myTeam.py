@@ -494,7 +494,19 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             print("we are flanking!")
         elif self.flank and successor.getAgentState(self.index).isPacman:
             x,y = self.start
-            minToOtherHalf = self.getMazeDistance(myPos, (x,y/2))
+            possibleLegalPositions = set(self.legalPositions)
+            halfHome = (x,y/2)
+            up = (myPos[0], y)
+            out = (myPos[0], y/2)
+            down = (myPos[0], 1)
+            aims = [self.start]
+
+            if halfHome in possibleLegalPositions: aims.append(halfHome)
+            if up in possibleLegalPositions: aims.append(up)
+            if out in possibleLegalPositions: aims.append(out)
+            if down in possibleLegalPositions: aims.append(down)
+            aim = random.choice(aims)
+            minToOtherHalf = self.getMazeDistance(myPos, aim)
             if myPos == self.start: minToOtherHalf = 0.000001
             features['minToOtherHalf'] = -float(minToOtherHalf)
             print("we are flanking!")
@@ -504,7 +516,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
     def getWeights(self, gameState, action):
 
-        return {'foodScore': 100, 'distanceToFood': -2, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
+        return {'foodScore': 100, 'distanceToFood': -3, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
                 'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -75, 'rev': -100, 'minToOtherHalf': 1000}
     
     def chooseAction(self, gameState):
