@@ -30,7 +30,7 @@ debug_capsule = True
 def createTeam(firstIndex, secondIndex, isRed,
                first='DummyAgent', second='DummyAgent'):
     first = "OffensiveReflexAgent"
-    second = "DummyAgent"
+    second = "DefensiveReflexAgent"
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 ##########
@@ -58,6 +58,11 @@ class ParticlesCTFAgent(CaptureAgent):
         self.stopped = 0
         self.stuck = False
         self.numStuckSteps = 0
+        self.offenseInitialIncentivize = True
+        self.defenseInitialIncentivize = True
+        self.width = self.getFood(gameState).width
+        self.height = self.getFood(gameState).height
+        self.halfway = self.width/2
 
     def initialize(self, gameState, legalPositions=None):
         self.legalPositions = gameState.getWalls().asList(False)
@@ -498,14 +503,23 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         self.observeState(gameState, self.a)
         self.observeState(gameState, self.b)
         beliefs = [self.getBeliefDistribution(self.a), self.getBeliefDistribution(self.b)]
-        #self.displayDistributionsOverPositions(beliefs)
+        self.displayDistributionsOverPositions(beliefs)
 
         actions = gameState.getLegalActions(self.index)
+
+        # =========Do something weird==============
+        # offense
+        # if self.red:
+        #     # on red team
+        #     pos = list()
+        #     for x in range(2, self.height):
+        #         new_pos = (x, self.halfway - 2)
+
+        # =========End of Do something weird==============
 
         aPosition = self.getEnemyPositions(self.a)
         bPosition = self.getEnemyPositions(self.b)
         hypotheticalState = gameState.deepCopy()
-
 
         if self.getMazeDistance(aPosition, pacmanPosition) < 7 and self.getBeliefDistribution(self.a)[aPosition] > 0.5:
             hypotheticalState = self.setEnemyPosition(hypotheticalState, aPosition, self.a)
@@ -644,7 +658,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 return v
             beta = min(beta, v)
         return v
-                'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -50, 'rev': -2, 'avoidEnemyAtStart': 0.5}
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
