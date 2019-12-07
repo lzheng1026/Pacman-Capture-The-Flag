@@ -544,7 +544,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         return {'foodScore': 100, 'distanceToFood': -3, 'distanceToHome': 1000, 'distanceToCapsule': 1.2,
                 'minEnemyDist': -100, 'generalEnemyDist': 1, 'eatEnemyDist': 2.1, 'stop': -75, 'rev': -100,
-                'minToOtherHalf': 1000, 'max_furthest_point_dist': -99999999999999, 'distance_from_border': 0.01,
+                'minToOtherHalf': 1000, 'max_furthest_point_dist': -999999999, 'distance_from_border': 0.01,
                 'seconddistanceToFood': -1, 'thirddistanceToFood': -0.8, 'numEatableEnemies': -1000,
                 'dying_punishment': -1}
 
@@ -688,13 +688,22 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         return bestAction
 
     def maxValue(self, gameState, order, index, depth, alpha, beta, start):
+
+        print("=== in max value===")
+        print("depth: " + str(depth))
+
         # returns a value and an action so getAction can return the best action
         action = gameState.getLegalActions(order[0])[0]
         if gameState.isOver() or depth == 0 or ((time.time() - start) > 0.9):
+
             return [self.evaluate(gameState, None), action]
+
         v = -10000000
         action = None
+
         for a in gameState.getLegalActions(order[0]):
+            print("max; depth: " + str(depth) + "; max value action: " + str(a))
+
             try:
                 newState = gameState.generateSuccessor(order[0], a)
             except:
@@ -703,11 +712,15 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             # eat ghost
             if newState.getAgentPosition(self.index) == newState.getAgentPosition(order[1]) and self.scaredMoves > 0:
                 action = a
+                print("max; depth: " + str(depth) + "; eat ghost happened")
+                import pdb;
+                pdb.set_trace()
                 break
 
             something = self.minValue(newState, order, index + 1, depth, alpha, beta, start)
             newScore = something[0]
             compareState = something[1]
+
             # don't die
             if newState.getAgentPosition(self.index) == compareState.getAgentPosition(order[1]):
                 continue
@@ -717,34 +730,58 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             if v > beta:
                 return [v, a]
             alpha = max(alpha, v)
+
+        print("max; depth: " + str(depth) + "; v is " + str(v) + "; action is " + str(action))
+
         return [v, action]
 
     def minValue(self, gameState, order, index, depth, alpha, beta, start):
+
+        print("=== in min value===")
+        print("depth: " + str(depth))
+
         if gameState.isOver() or depth == 0 or ((time.time() - start) > 0.9):
             return [self.evaluate(gameState, None), gameState]
+
         v = 10000000
         bestState = gameState
+
         for a in gameState.getLegalActions(order[index]):
+
+            print("min; depth: " + str(depth) + "; min value action: " + str(a))
+
             try:
                 newState = gameState.generateSuccessor(order[index], a)
             except:
                 return [self.evaluate(gameState, None), gameState]
-            # eat pacman
-            if newState.getAgentPosition(order[1]) == gameState.getAgentPosition(self.index):
-                return [-1000000, newState]
+
+            # eat pacman when we are on defense
+            if newState.getAgentPosition(order[index]) == gameState.getAgentPosition(self.index): # changed 1
+                print("min; depth: " + str(depth) + "; self.index: " + str(self.index) +"; order " + str(order))
+                import pdb;
+                pdb.set_trace()
+                return [-999999999999999991000000, newState] #1000000
+
             # if pacman goes next, here is where depth is decremented
             if index + 1 >= len(order):
                 newScore = self.maxValue(newState, order, 0, depth - 1, alpha, beta, start)[0]
                 if newScore < v:
                     v = newScore
                     bestState = newState
+
             # if another enemy goes
             else:
                 # change to max and [0] if using partner
                 v = min(v, self.minValue(newState, order, index + 1, depth, alpha, beta, start)[0])
+                print("min; depth: " + str(depth) + "; this shouldn't happen? " )
+
             if v < alpha:
                 return [v, bestState]
+
             beta = min(beta, v)
+
+        print("min; depth: " + str(depth) + "; v is " + str(v) + "; bestState is " + str(bestState))
+
         return [v, bestState]
 
     def print_evaluate(self, gameState, action):
@@ -755,7 +792,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         # if debug:
         #     for feature in weights.keys():
         #         print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
-
         print(str('min enemy dist') + " " + str(features['minEnemyDist']) + "; feature weight: " + str(
             weights['minEnemyDist']))
         #     print("\n")
