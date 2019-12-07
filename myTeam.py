@@ -82,7 +82,6 @@ class ParticlesCTFAgent(CaptureAgent):
         legal_homes = list()
         for home in list_of_homes:
             if home in legals:
-                self.debugDraw(home, (255, 255, 255), False)
                 legal_homes.append(home)
 
                 dist = self.getMazeDistance(myPos, home)
@@ -94,7 +93,6 @@ class ParticlesCTFAgent(CaptureAgent):
 
         # ====setting initial position to go to==========
         self.furthest_position_along_border_of_home = furthest_home
-        self.debugDraw(home, (100, 255, 255), False)
         self.go_to_furthest_position = True
 
     def initialize(self, gameState, legalPositions=None):
@@ -293,24 +291,9 @@ class ParticlesCTFAgent(CaptureAgent):
         
         self.observeState(gameState, self.a)
         self.observeState(gameState, self.b)
-
-        # self.displayDistributionsOverPositions(beliefs)
         
         actions = gameState.getLegalActions(self.index)
-
-        # values = [self.evaluate(gameState, a) for a in actions]
-        if debug and False:
-            values = list()
-            print("=======Start=========")
-            for a in actions:
-                print("Action: " + str(a))
-                value = self.evaluate(gameState, a)
-                print("\tValue: " + str(value))
-                print("\n")
-                values.append(value)
-            print("========End========")
-        else:
-            values = [self.evaluate(gameState, a) for a in actions]
+        values = [self.evaluate(gameState, a) for a in actions]
 
         maxValue = max(values)
         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
@@ -333,13 +316,9 @@ class ParticlesCTFAgent(CaptureAgent):
             numCapsulesDefending = len(self.getSuccessor(gameState,bestAction).getRedCapsules())
         if numCapsulesLeft < numCapsulesDefending:
             # enemy ate a capsule!
-            print("enemy ate a capsule!")
             self.defenseScaredMoves += 40
         elif self.defenseScaredMoves != 0:
             self.defenseScaredMoves -= 1
-
-        # if time.time() - start > 0.1:
-        #     print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
         return bestAction
 
@@ -358,7 +337,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
     def getFeaturesFoodOffenseSide(self, myPos, numFoodEaten, foodList, shouldGoHome, features, numCarryingLimit):
 
         if len(foodList) <= 2 or (numFoodEaten>=numCarryingLimit and shouldGoHome) and True:
-            # print("actually goes home")
             minToHome = min([self.getMazeDistance(myPos, h) for h in self.positions_along_border_of_home])
             if minToHome == 0: minToHome = 0.000001
             # add to features
@@ -376,7 +354,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 features['distanceToFood'] = minDistance
                 features['seconddistanceToFood'] = secondMinDistance
                 features['thirddistanceToFood'] = thirdMinDistance
-                # print("second " + str(secondMinDistance) + " thitd: " + str(thirdMinDistance))
 
     def getFeaturesCapsulesOffenseSide(self, capsuleList, myPos, features):
 
@@ -413,8 +390,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             localgo_to_furthest_position = False
         elif myPos == self.start:
             localgo_to_furthest_position = True
-            # import pdb;
-            # pdb.set_trace()
         if max_furthest_point_dist == 0:
             max_furthest_point_dist = 0.0001
 
@@ -491,19 +466,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 elif min_enemy_dist == 0:
                     # really bad bc you are eaten!
                     features['minEnemyDist']  = 999999
-                    print("going to be eaten!")
                 # otherwise have min dist feature
                 else:
                     features['minEnemyDist'] = when_min_enemy_dist_matters - float(min_enemy_dist)
-            else:
-                if min_enemy_dist >= when_min_enemy_dist_matters and min_enemy_dist  != 99999999999:
-                    print(str(min_enemy_dist))
-                    print(str(when_min_enemy_dist_matters))
-                    import pdb;
-                    pdb.set_trace()
-
-            # print("min enemy dist " + str(min_enemy_dist))
-            # print("features min enemy dist " + str(features['minEnemyDist']))
 
             # food
             shouldGoHome = False
@@ -515,7 +480,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             if min_enemy_dist == 99999999999:
                 if not (len(foodList) <= 2 or (numFoodEaten>=numCarryingLimit and shouldGoHome) and True): # condition for going home
                     distance_from_border = abs(myPos[0] - halfway) + abs(myPos[1] - 0)
-                    # print("distance from border " + str(distance_from_border))
                     features['distance_from_border'] = float(distance_from_border)
 
         # punish staying in the same place
@@ -530,13 +494,11 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             if minToHome == 0: minToHome = 0.000001
             # add to features
             features['distanceToHome'] = -float(minToHome)
-            # print("we are stuck!")
         elif self.flank and not successor.getAgentState(self.index).isPacman:
             minToHome = self.getMazeDistance(myPos, self.start)
             if minToHome == 0: minToHome = 0.000001
             # add to features
             features['distanceToHome'] = -float(minToHome)
-            # print("we are flanking!")
         elif self.flank and successor.getAgentState(self.index).isPacman:
             x,y = self.start
             possibleLegalPositions = set(self.legalPositions)
@@ -554,14 +516,9 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             minToOtherHalf = self.getMazeDistance(myPos, aim)
             if myPos == self.start: minToOtherHalf = 0.000001
             features['minToOtherHalf'] = -float(minToOtherHalf)
-            # print("we are flanking!")
 
         if myPos == self.start:
             features['dying_punishment'] = 999999
-            print("would've died")
-            import pdb;
-            pdb.set_trace()
-
 
         return features
 
@@ -590,7 +547,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
         if self.getMazeDistance(aPosition, pacmanPosition) <= 5:# and self.getBeliefDistribution(self.a)[aPosition] > 0.5:
             hypotheticalState = self.setEnemyPosition(hypotheticalState, aPosition, self.a)
-            #print("***** in mini max ******")
             order = [self.index, self.a]
             if self.getMazeDistance(aPosition, pacmanPosition) < 3:
                 result = self.maxValue(hypotheticalState, order, 0, 3, -10000000, 10000000,start)
@@ -605,10 +561,8 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             else:
                 pass
             bestAction = result[1]
-            # print("in offense if")
         elif self.getMazeDistance(bPosition, pacmanPosition) <= 5:# and self.getBeliefDistribution(self.b)[bPosition] > 0.5:
             hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
-            #print("***** in mini max ******")
             order = [self.index, self.b]
             if self.getMazeDistance(bPosition, pacmanPosition) < 3:
                 result = self.maxValue(hypotheticalState, order, 0, 3, -10000000, 10000000, start)
@@ -616,19 +570,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000, start)
             bestAction = result[1]
         else:
-            # values = [self.evaluate(gameState, a) for a in actions]
-            if debug:
-                values = list()
-                print("=======Start=========")
-                for a in actions:
-                    print("Action: " + str(a))
-                    value = self.print_evaluate(gameState, a)
-                    print("\tValue: " + str(value))
-                    print("\n")
-                    values.append(value)
-                print("========End========")
-            else:
-                values = [self.evaluate(gameState, a) for a in actions]
+            values = [self.evaluate(gameState, a) for a in actions]
 
             maxValue = max(values)
             bestActions = [a for a, v in zip(actions, values) if v == maxValue]
@@ -655,9 +597,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         elif self.defenseScaredMoves != 0:
             self.defenseScaredMoves -= 1
 
-        # if time.time() - start > 0.1:
-        #     print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
-
         if bestAction == 'Stop':
             self.stopped += 1
             if self.stopped >= 3:
@@ -679,7 +618,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 self.flank = True
         else:
             if self.flank and self.numRevSteps<7:
-                print("num steps is " + str(self.numRevSteps))
                 self.numRevSteps += 1
             elif self.flank and self.numRevSteps >= 7:
                 self.flank = False
@@ -703,38 +641,15 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         myPos = successor.getAgentState(self.index).getPosition()
         max_furthest_point_dist = self.getMazeDistance(myPos, self.furthest_position_along_border_of_home)
 
-        # import pdb;
-        # pdb.set_trace()
-
         if successor.getAgentState(self.index).isPacman or max_furthest_point_dist < 2:#((abs(myPos[0]-self.offenseGoToFurthestFoodPosition[0]) < 5 and not successor.getAgentState(self.index).isPacman) and maxfooddist < 5):
-            # print("situation 1 - becoming false")
             self.go_to_furthest_position = False
         elif self.getMazeDistance(myPos, self.start) == 0:
-        #     print("situation 2")
             self.go_to_furthest_position = True
-            import pdb;
-            pdb.set_trace()
-        # if self.go_to_furthest_position:
-        #     print("go to furthest food at home! " + str(max_furthest_point_dist))
 
         if bestAction is None:
             bestAction = random.choice(actions)
 
         return bestAction
-
-    def print_evaluate(self, gameState, action):
-
-        features = self.getFeatures(gameState, action)
-        weights = self.getWeights(gameState, action)
-        # debug
-        # if debug:
-        #     for feature in weights.keys():
-        #         print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
-
-        print(str('min enemy dist') + " " + str(features['minEnemyDist']) + "; feature weight: " + str(weights['minEnemyDist']))
-        #     print("\n")
-
-        return features * weights
 
     def maxValue(self, gameState, order, index, depth, alpha, beta, start):
         # returns a value and an action so getAction can return the best action
@@ -747,7 +662,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             try:
                 newState = gameState.generateSuccessor(order[0], a)
             except:
-                print("exception occured")
                 return [self.evaluate(gameState, None), None]
 
             #eat ghost
@@ -778,7 +692,6 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             try:
                 newState = gameState.generateSuccessor(order[index], a)
             except:
-                print("exception occured")
                 return [self.evaluate(gameState, None), gameState]
             #eat pacman
             if newState.getAgentPosition(order[1]) == gameState.getAgentPosition(self.index):
