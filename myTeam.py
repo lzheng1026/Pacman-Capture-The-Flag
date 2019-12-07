@@ -611,8 +611,7 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         elif self.defenseScaredMoves != 0:
             self.defenseScaredMoves -= 1
 
-        if time.time() - start > 0.1:
-            print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
+
 
         if bestAction == 'Stop':
             self.stopped += 1
@@ -657,6 +656,8 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             self.flank = 0
             self.reverse = 0
             self.numRevSteps = 0
+        if time.time() - start > 0.1:
+            print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
 
         return bestAction
 
@@ -673,10 +674,18 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             except:
                 print("exception occured")
                 return [self.evaluate(gameState, None), None]
+
+            #eat ghost
             if newState.getAgentPosition(self.index) == newState.getAgentPosition(order[1]) and self.scaredMoves > 0:
                 action = a
                 break
-            newScore = self.minValue(newState, order, index + 1, depth, alpha, beta,start)
+
+            something = self.minValue(newState, order, index + 1, depth, alpha, beta,start)
+            newScore = something[0]
+            compareState =something[1]
+            #don't die
+            if newState.getAgentPosition(self.index) == compareState.getAgentPosition(order[1]):
+                continue
             if newScore > v:
                 v = newScore
                 action = a
@@ -687,25 +696,32 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
 
     def minValue(self, gameState, order, index, depth, alpha, beta, start):
         if gameState.isOver() or depth == 0 or ((time.time()-start) > 0.9):
-            return self.evaluate(gameState, None)
+            return [self.evaluate(gameState, None), gameState]
         v = 10000000
+        bestState = gameState
         for a in gameState.getLegalActions(order[index]):
             try:
                 newState = gameState.generateSuccessor(order[index], a)
             except:
                 print("exception occured")
-                return self.evaluate(gameState, None)
+                return [self.evaluate(gameState, None), gameState]
+            #eat pacman
+            if newState.getAgentPosition(order[1]) == gameState.getAgentPosition(self.index):
+                return [-1000000, newState]
             # if pacman goes next, here is where depth is decremented
             if index + 1 >= len(order):
-                v = min(v, self.maxValue(newState, order, 0, depth - 1, alpha, beta,start)[0])
+                newScore = self.maxValue(newState, order, 0, depth - 1, alpha, beta,start)[0]
+                if newScore < v:
+                    v=newScore
+                    bestState = newState
             # if another enemy goes
             else:
                 #change to max and [0] if using partner
-                v = min(v, self.minValue(newState, order, index + 1, depth, alpha, beta,start))
+                v = min(v, self.minValue(newState, order, index + 1, depth, alpha, beta,start)[0])
             if v < alpha:
-                return v
+                return [v,bestState]
             beta = min(beta, v)
-        return v
+        return [v,bestState]
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
