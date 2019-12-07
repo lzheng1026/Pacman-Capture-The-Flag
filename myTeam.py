@@ -107,6 +107,13 @@ class ParticlesCTFAgent(CaptureAgent):
         self.initialGameState = gameState
 
     def setEnemyPosition(self, gameState, pos, enemyIndex):
+
+        #checking
+        if pos == gameState.getAgentPosition(self.index):
+            import pdb;
+            pdb.set_trace()
+        #-------
+
         foodGrid = self.getFood(gameState)
         halfway = foodGrid.width / 2
         conf = game.Configuration(pos, game.Directions.STOP)
@@ -122,6 +129,7 @@ class ParticlesCTFAgent(CaptureAgent):
                 isPacman = True
             else:
                 isPacman = False
+
         gameState.data.agentStates[enemyIndex] = game.AgentState(conf, isPacman)
 
         return gameState
@@ -572,6 +580,12 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             else:
                 pass
             bestAction = result[1]
+
+            print("===============")
+            print("Action: " + str(bestAction))
+            print("Value: " + str(self.print_evaluate(gameState, bestAction)))
+            print("===============\n")
+
         elif self.getMazeDistance(bPosition,
                                   pacmanPosition) <= 5:  # and self.getBeliefDistribution(self.b)[bPosition] > 0.5:
             hypotheticalState = self.setEnemyPosition(hypotheticalState, bPosition, self.b)
@@ -581,9 +595,14 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
             else:
                 result = self.maxValue(hypotheticalState, order, 0, 2, -10000000, 10000000, start)
             bestAction = result[1]
+
+            print("===============")
+            print("Action: " + str(bestAction))
+            print("Value: " + str(self.print_evaluate(gameState, bestAction)))
+            print("===============\n")
+
         else:
             values = [self.evaluate(gameState, a) for a in actions]
-
             maxValue = max(values)
             bestActions = [a for a, v in zip(actions, values) if v == maxValue]
             bestAction = random.choice(bestActions)
@@ -662,6 +681,10 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
         if bestAction is None:
             bestAction = random.choice(actions)
 
+        if self.getSuccessor(gameState, bestAction).getAgentPosition(self.index) == self.start:
+            import pdb;
+            pdb.set_trace()
+
         return bestAction
 
     def maxValue(self, gameState, order, index, depth, alpha, beta, start):
@@ -723,6 +746,21 @@ class OffensiveReflexAgent(ParticlesCTFAgent):
                 return [v, bestState]
             beta = min(beta, v)
         return [v, bestState]
+
+    def print_evaluate(self, gameState, action):
+
+        features = self.getFeatures(gameState, action)
+        weights = self.getWeights(gameState, action)
+        # debug
+        # if debug:
+        #     for feature in weights.keys():
+        #         print(str(feature) + " " + str(features[feature]) + "; feature weight: " + str(weights[feature]))
+
+        print(str('min enemy dist') + " " + str(features['minEnemyDist']) + "; feature weight: " + str(
+            weights['minEnemyDist']))
+        #     print("\n")
+
+        return features * weights
 
 
 class DefensiveReflexAgent(ParticlesCTFAgent):
