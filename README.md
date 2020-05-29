@@ -4,6 +4,8 @@ A python multi-player capture-the-flag variant of Pacman based on the [UC Berkel
 
 ![Game](http://ai.berkeley.edu/projects/release/contest/v1/002/capture_the_flag2.png)
 
+Final project for COSC241 Artificial Intelligence.
+
 ## Strategy
 
 One defensive agent and one offensive agent. The agent may temporarily change its role based on the situation.
