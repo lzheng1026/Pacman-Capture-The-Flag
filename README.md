@@ -14,6 +14,10 @@ One defensive agent and one offensive agent. The agent may temporarily change it
 
 Two AI agents built primarily using alpha beta pruned adversarial search and reinforcement learning. Enemy positions estimated using particle filter approximation.
 
+## Build
+
+python capture.py -r myTeam -b myTeam
+
 ## Results
 
 Ranked 7th place out of 50 teams in the final class tournament, fall 2019.
